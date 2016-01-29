@@ -42,6 +42,10 @@ are:
 
     bugzilla         Fetch bugs from a Bugzilla server
     git              Fetch commits from a Git log file
+    github           Fetch issues from a GitHub repository
+    gerrit           Fetch reviews from a Gerrit server
+    hello            Fetch hello messages (sample backend)
+
 
 optional arguments:
   -h, --help            show this help message and exit

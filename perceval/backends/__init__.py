@@ -24,17 +24,20 @@ from .bugzilla import Bugzilla, BugzillaCommand
 from .gerrit import Gerrit, GerritCommand
 from .git import Git, GitCommand
 from .github import GitHub, GitHubCommand
+from .hello import Hello, HelloCommand
 
 
 PERCEVAL_BACKENDS = {
                      'bugzilla' : Bugzilla,
                      'git'      : Git,
                      'gerrit'   : Gerrit,
-                     'github'   : GitHub
+                     'github'   : GitHub,
+                     'hello'    : Hello
                     }
 PERCEVAL_CMDS = {
                  'bugzilla' : BugzillaCommand,
                  'git'      : GitCommand,
                  'gerrit'   : GerritCommand,
-                 'github'   : GitHubCommand
+                 'github'   : GitHubCommand,
+                 'hello'    : HelloCommand
                 }
