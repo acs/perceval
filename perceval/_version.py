@@ -17,6 +17,6 @@
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #
 # Authors:
-#     Santiago Dueñas <sduenas@bitergia.com>
+#     Santiago Duenas <sduenas@bitergia.com>
 
 __version__ = "0.1.0"
