@@ -21,6 +21,7 @@
 #
 
 from .bugzilla import Bugzilla, BugzillaCommand
+from .bugzillarest import BugzillaRest, BugzillaRestCommand
 from .gerrit import Gerrit, GerritCommand
 from .git import Git, GitCommand
 from .github import GitHub, GitHubCommand
@@ -32,6 +33,7 @@ from .stackexchange import StackExchange, StackExchangeCommand
 
 PERCEVAL_BACKENDS = {
                      'bugzilla'      : Bugzilla,
+                     'bugzillarest'  : BugzillaRest,
                      'git'           : Git,
                      'gerrit'        : Gerrit,
                      'github'        : GitHub,
@@ -42,6 +44,7 @@ PERCEVAL_BACKENDS = {
                     }
 PERCEVAL_CMDS = {
                  'bugzilla'      : BugzillaCommand,
+                 'bugzillarest'  : BugzillaRestCommand,
                  'git'           : GitCommand,
                  'gerrit'        : GerritCommand,
                  'github'        : GitHubCommand,
