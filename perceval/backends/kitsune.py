@@ -20,6 +20,7 @@
 #     Alvaro del Castillo <acs@bitergia.com>
 #
 
+import functools
 import json
 import logging
 import os.path
@@ -40,7 +41,26 @@ from ..utils import (DEFAULT_DATETIME,
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_OFFSET = 0
 KITSUNE_URL = "https://support.mozilla.org"
+
+
+def kitsune_metadata(func):
+    """Kitsune metadata decorator.
+
+    This decorator takes items overrides `metadata` decorator to add extra
+    information related to Kitsune (offset).
+    """
+    @functools.wraps(func)
+    def decorator(self, *args, **kwargs):
+        offset = kwargs.get('offset', DEFAULT_OFFSET)
+
+        for item in func(self, *args, **kwargs):
+            item['offset'] = offset
+            offset += 1
+            yield item
+    return decorator
+
 
 class Kitsune(Backend):
     """Kitsune backend for Perceval.
@@ -65,39 +85,32 @@ class Kitsune(Backend):
         self.url = url
         self.client = KitsuneClient(url)
 
+    @kitsune_metadata
     @metadata
-    def fetch(self):
+    def fetch(self, offset=DEFAULT_OFFSET):
         """Fetch questions from the Kitsune url.
 
         The method retrieves, from a Kitsune url, the
         questions.
 
+        :offset: page from which start the fetching
         :returns: a generator of questions
         """
 
-        logger.info("Looking for questions at url '%s'", self.url)
+        logger.info("Looking for questions at url '%s' offset %s", self.url, offset)
 
         self._purge_cache_queue()
 
         nquestions = 0  # number of questions processed
         tquestions = 0  # number of questions from API data
-        more_questions = True # There are more questions to be processed
-        questions_next_uri = None # URI for the next questions query
 
-        while more_questions:
-            raw_questions = self.client.get_questions(questions_next_uri)
+        for raw_questions in self.client.get_questions(offset):
             self._push_cache_queue(raw_questions)
             questions_data = json.loads(raw_questions)
 
             try:
                 logger.debug("Questions: %i/%i", nquestions, tquestions)
-
                 tquestions = questions_data['count']
-                questions_next_uri = questions_data['next']
-
-                if not questions_next_uri:
-                    more_questions = False
-
                 questions = questions_data['results']
             except:
                 cause = ("Bad JSON format for mozilla_questions: %s" % (questions_data))
@@ -111,6 +124,7 @@ class Kitsune(Backend):
 
         logger.info("Total number of questions: %i (%i expected)", nquestions, tquestions)
 
+    @kitsune_metadata
     @metadata
     def fetch_from_cache(self):
         """Fetch the questions from the cache.
@@ -170,6 +184,8 @@ class KitsuneClient:
     :raises HTTPError: when an error occurs doing the request
     """
 
+    QUESTIONS_PER_PAGE = 20  # Fixed param from API
+
     def __init__(self, url):
         self.url = url
         self.api_url = urljoin(self.url, '/api/2/')
@@ -188,21 +204,36 @@ class KitsuneClient:
 
         return req.text
 
-    def get_questions(self, next_uri=None):
+    def get_questions(self, offset=None):
         """Retrieve questions from page"""
         page = 1
 
-        if next_uri:
-            # https://support.mozilla.org/api/2/question/?page=2
-            page = next_uri.split('page=')[1]
+        if offset:
+            page = int(offset/self.QUESTIONS_PER_PAGE)
 
-        api_questions_url = urljoin(self.api_url, '/question')+'/'
+        more_questions = True # There are more questions to be processed
+        next_uri = None # URI for the next questions query
 
-        params = {
-            "page":page
-        }
+        while more_questions:
 
-        return self.call(api_questions_url, params)
+            if next_uri:
+                # https://support.mozilla.org/api/2/question/?page=2
+                page = next_uri.split('page=')[1]
+
+            api_questions_url = urljoin(self.api_url, '/question')+'/'
+
+            params = {
+                "page":page
+            }
+
+            questions = self.call(api_questions_url, params)
+            yield questions
+
+            questions_json = json.loads(questions)
+            next_uri = questions_json['next']
+
+            if not next_uri:
+                more_questions = False
 
     def get_answers(self, page=0):
         """Retrieve answers from page"""
@@ -225,6 +256,7 @@ class KitsuneCommand(BackendCommand):
         self.url = self.parsed_args.url
         self.origin = self.parsed_args.origin
         self.outfile = self.parsed_args.outfile
+        self.offset = self.parsed_args.offset
 
         if not self.parsed_args.no_cache:
             if not self.parsed_args.cache_path:
@@ -255,7 +287,7 @@ class KitsuneCommand(BackendCommand):
         if self.parsed_args.fetch_cache:
             questions = self.backend.fetch_from_cache()
         else:
-            questions = self.backend.fetch()
+            questions = self.backend.fetch(offset=self.offset)
 
         try:
             for question in questions:
@@ -276,9 +308,18 @@ class KitsuneCommand(BackendCommand):
         """Returns the Kitsune argument parser."""
 
         parser = super().create_argument_parser()
+        # Remove --from-date argument from parent parser
+        # because it is not needed by this backend
+        action = parser._option_string_actions['--from-date']
+        parser._handle_conflict_resolve(None, [('--from-date', action)])
 
         # Kitsune options
         group = parser.add_argument_group('Kitsune arguments')
+
+        # Optional arguments
+        parser.add_argument('--offset', dest='offset',
+                            type=int, default=0,
+                            help='Offset to start fetching questions')
 
         group.add_argument("url", default="https://support.mozilla.org", nargs='?',
                            help="Kitsune URL (default: https://support.mozilla.org)")
