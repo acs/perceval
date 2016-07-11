@@ -45,31 +45,14 @@ DEFAULT_OFFSET = 0
 KITSUNE_URL = "https://support.mozilla.org"
 
 
-def kitsune_metadata(func):
-    """Kitsune metadata decorator.
-
-    This decorator takes items overrides `metadata` decorator to add extra
-    information related to Kitsune (offset).
-    """
-    @functools.wraps(func)
-    def decorator(self, *args, **kwargs):
-        offset = kwargs.get('offset', DEFAULT_OFFSET)
-        # Normalize offset so it starts at page start
-        offset = int(offset/KitsuneClient.QUESTIONS_PER_PAGE)*KitsuneClient.QUESTIONS_PER_PAGE
-
-        for item in func(self, *args, **kwargs):
-            item['offset'] = offset
-            offset += 1
-            yield item
-    return decorator
-
-
 class Kitsune(Backend):
     """Kitsune backend for Perceval.
 
     This class retrieves the questions and answers from a
     Kitsune url. To initialize this class a
     url could be provided. If not, https://support.mozilla.org will be used.
+
+    questions and answers are returned from newers to older.
 
     :param url: Kitsune url
     :param cache: cache object to store raw data
@@ -87,26 +70,29 @@ class Kitsune(Backend):
         self.url = url
         self.client = KitsuneClient(url)
 
-    @kitsune_metadata
     @metadata
-    def fetch(self, offset=DEFAULT_OFFSET):
+    def fetch(self, from_date=DEFAULT_DATETIME):
         """Fetch questions from the Kitsune url.
 
         The method retrieves, from a Kitsune url, the
         questions.
 
-        :offset: page from which start the fetching
+        :from_date: obtain questions updated since this date
         :returns: a generator of questions
         """
 
-        logger.info("Looking for questions at url '%s' offset %s", self.url, offset)
+        logger.info("Looking for questions at url '%s' updated after %s",
+                    self.url, str(from_date))
 
         self._purge_cache_queue()
 
         nquestions = 0  # number of questions processed
         tquestions = 0  # number of questions from API data
+        more_updated = True # more questions updated after from_date
 
-        for raw_questions in self.client.get_questions(offset):
+        for raw_questions in self.client.get_questions():
+            if not more_updated:
+                break
             self._push_cache_queue(raw_questions)
             questions_data = json.loads(raw_questions)
 
@@ -119,14 +105,22 @@ class Kitsune(Backend):
                 raise ParseError(cause=cause)
 
             for question in questions:
+                if str_to_datetime(question['updated']) <= from_date:
+                    logging.info("No more questions updated after: %s", from_date)
+                    more_updated = False
+                    break
+                question['answers_data'] = []
+                for raw_answers in self.client.get_question_answers(question):
+                    self._push_cache_queue(raw_answers)
+                    answers = json.loads(raw_answers)['results']
+                    question['answers_data'] += answers
                 yield question
                 nquestions += 1
 
             self._flush_cache_queue()
 
-        logger.info("Total number of questions: %i (%i total, %i offset)", nquestions, tquestions, offset)
+        logger.info("Total number of questions: %i (%i total)", nquestions, tquestions)
 
-    @kitsune_metadata
     @metadata
     def fetch_from_cache(self):
         """Fetch the questions from the cache.
@@ -186,7 +180,7 @@ class KitsuneClient:
     :raises HTTPError: when an error occurs doing the request
     """
 
-    QUESTIONS_PER_PAGE = 20  # Fixed param from API
+    ITEMS_PER_PAGE = 20  # Fixed param from API
 
     def __init__(self, url):
         self.url = url
@@ -206,14 +200,9 @@ class KitsuneClient:
 
         return req.text
 
-    def get_questions(self, offset=None):
-        """Retrieve questions from page"""
+    def get_questions(self):
+        """Retrieve questions"""
         page = 1
-
-        if offset:
-            # First containes contains the offset item but could include
-            # previous questions also from the same page
-            page = int(offset/self.QUESTIONS_PER_PAGE)+1
 
         more_questions = True # There are more questions to be processed
         next_uri = None # URI for the next questions query
@@ -250,6 +239,24 @@ class KitsuneClient:
 
         return self.call(api_answers_url, params)
 
+    def get_question_answers(self, question):
+        """Retrieve all answers for a question"""
+
+        more = True
+        page = 1
+
+        while more:
+            api_answers_url = urljoin(self.api_url, '/answer')+'/'
+            params = {
+                "page": page,
+                "question":question['id']
+            }
+            answers_raw = self.call(api_answers_url, params)
+            yield answers_raw
+            answers = json.loads(answers_raw)
+            if not answers['next']:
+                more = False
+            page = page+1
 
 
 class KitsuneCommand(BackendCommand):
@@ -260,7 +267,7 @@ class KitsuneCommand(BackendCommand):
         self.url = self.parsed_args.url
         self.origin = self.parsed_args.origin
         self.outfile = self.parsed_args.outfile
-        self.offset = self.parsed_args.offset
+        self.from_date = str_to_datetime(self.parsed_args.from_date)
 
         if not self.parsed_args.no_cache:
             if not self.parsed_args.cache_path:
@@ -291,7 +298,7 @@ class KitsuneCommand(BackendCommand):
         if self.parsed_args.fetch_cache:
             questions = self.backend.fetch_from_cache()
         else:
-            questions = self.backend.fetch(offset=self.offset)
+            questions = self.backend.fetch(from_date=self.from_date)
 
         try:
             for question in questions:
@@ -312,18 +319,9 @@ class KitsuneCommand(BackendCommand):
         """Returns the Kitsune argument parser."""
 
         parser = super().create_argument_parser()
-        # Remove --from-date argument from parent parser
-        # because it is not needed by this backend
-        action = parser._option_string_actions['--from-date']
-        parser._handle_conflict_resolve(None, [('--from-date', action)])
 
         # Kitsune options
         group = parser.add_argument_group('Kitsune arguments')
-
-        # Optional arguments
-        parser.add_argument('--offset', dest='offset',
-                            type=int, default=0,
-                            help='Offset to start fetching questions')
 
         group.add_argument("url", default="https://support.mozilla.org", nargs='?',
                            help="Kitsune URL (default: https://support.mozilla.org)")
