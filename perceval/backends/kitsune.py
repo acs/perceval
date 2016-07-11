@@ -54,6 +54,8 @@ def kitsune_metadata(func):
     @functools.wraps(func)
     def decorator(self, *args, **kwargs):
         offset = kwargs.get('offset', DEFAULT_OFFSET)
+        # Normalize offset so it starts at page start
+        offset = int(offset/KitsuneClient.QUESTIONS_PER_PAGE)*KitsuneClient.QUESTIONS_PER_PAGE
 
         for item in func(self, *args, **kwargs):
             item['offset'] = offset
@@ -122,7 +124,7 @@ class Kitsune(Backend):
 
             self._flush_cache_queue()
 
-        logger.info("Total number of questions: %i (%i expected)", nquestions, tquestions)
+        logger.info("Total number of questions: %i (%i total, %i offset)", nquestions, tquestions, offset)
 
     @kitsune_metadata
     @metadata
@@ -209,7 +211,9 @@ class KitsuneClient:
         page = 1
 
         if offset:
-            page = int(offset/self.QUESTIONS_PER_PAGE)
+            # First containes contains the offset item but could include
+            # previous questions also from the same page
+            page = int(offset/self.QUESTIONS_PER_PAGE)+1
 
         more_questions = True # There are more questions to be processed
         next_uri = None # URI for the next questions query
