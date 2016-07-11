@@ -29,6 +29,7 @@ import tempfile
 import unittest
 
 import httpretty
+import requests
 
 if not '..' in sys.path:
     sys.path.insert(0, '..')
@@ -74,11 +75,13 @@ class HTTPServer():
                     body = mozilla_questions_1
                 else:
                     body = mozilla_answers_1
-            else:
+            elif page == "2":
                 if 'question' in uri:
                     body = mozilla_questions_2
                 else:
                     body = mozilla_answers_2
+            else:
+                return (404, headers, '')
 
 
             HTTPServer.requests_http.append(httpretty.last_request())
@@ -147,6 +150,37 @@ class TestKitsuneBackend(unittest.TestCase):
 
         questions = [page for page in kitsune.fetch()]
 
+        self.assertEqual(len(questions), 4)
+
+        self.__check_questions_contents(questions)
+
+
+    @httpretty.activate
+    def test_fetch_from_offset(self):
+        """Test whether the questions are returned from offset"""
+
+        HTTPServer.routes()
+
+        # Test fetch questions with their reviews
+        kitsune = Kitsune(KITSUNE_SERVER_URL)
+
+        # Get not existing offset
+        offset=5000
+        with self.assertRaises(requests.exceptions.HTTPError):
+            questions = [page for page in kitsune.fetch(offset)]
+
+        # Get just the second page
+        offset = kitsune.client.QUESTIONS_PER_PAGE
+        questions = [page for page in kitsune.fetch(offset)]
+        self.assertEqual(len(questions), 2)
+
+        offset = kitsune.client.QUESTIONS_PER_PAGE+1
+        questions = [page for page in kitsune.fetch(offset)]
+        self.assertEqual(len(questions), 2)
+
+        # Get first an second page
+        offset = kitsune.client.QUESTIONS_PER_PAGE-1
+        questions = [page for page in kitsune.fetch(offset)]
         self.assertEqual(len(questions), 4)
 
         self.__check_questions_contents(questions)
@@ -259,7 +293,7 @@ class TestKitsuneClient(unittest.TestCase):
         # Set up a mock HTTP server
         body = read_file('data/kitsune_questions_1_2.json')
         client = KitsuneClient(KITSUNE_SERVER_URL)
-        response = client.get_questions()
+        response = next(client.get_questions()) # first group of questions
         req = HTTPServer.requests_http[-1]
         self.assertEqual(response, body)
         self.assertEqual(req.method, 'GET')
@@ -286,7 +320,7 @@ class TestKitsuneClient(unittest.TestCase):
         self.assertRegex(req.path, '/api/2/answer/')
         # Check request params
         expected = {
-                    'page' : ['0']
+                    'page' : ['1']
                     }
         self.assertDictEqual(req.querystring, expected)
 

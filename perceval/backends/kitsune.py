@@ -239,7 +239,7 @@ class KitsuneClient:
             if not next_uri:
                 more_questions = False
 
-    def get_answers(self, page=0):
+    def get_answers(self, page=1):
         """Retrieve answers from page"""
 
         api_answers_url = urljoin(self.api_url, '/answer')+'/'
