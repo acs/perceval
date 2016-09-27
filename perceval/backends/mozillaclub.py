@@ -107,25 +107,45 @@ class MozillaClub(Backend):
         sheet_json = json.loads(raw_cells)
         cells = sheet_json['feed']['entry']
         cell_cols = len(MozillaClub.event_template.keys())
-        # Remove the column names
-        for i in range(1, cell_cols+1):
+
+        # Check that the columns names are the same we have as template
+        column_names = True
+        while column_names:
+            cell = cells[0]
+            row = cell['gs$cell']['row']
+            if int(row) > 1:
+                break
+            # Remove the cells with column names
             cell = cells.pop(0)
+            col = cell['gs$cell']['col']
+            name = cell['content']['$t']
+            if name != MozillaClub.event_template[col]:
+                logger.error("Event template changed in spreadsheet %s vs %s", name, MozillaClub.event_template[col])
+                raise RuntimeError
 
         while cells:
             # Get all cols from a row to build the event
             event = {}
+            last_col = 0
             # Fill the empy with all fields as None
             for i in range (1, cell_cols+1):
                 event[MozillaClub.event_template[str(i)]] = None
             while True:
-                cell = cells.pop(0)
+                # Process event data
+                cell = cells[0]
                 col = cell['gs$cell']['col']
+                if int(col) < int(last_col):
+                    # new event detected
+                    break
+                else:
+                    cell = cells.pop(0)
                 event[MozillaClub.event_template[str(col)]] = cell['content']['$t']
                 if int(col) >= cell_cols:
                     # row (event) completed
                     break
+                last_col = col
 
-            if not event['Date of Event'] or not event['Club Name']:
+            if event['Date of Event'] is None or event['Club Name'] is None:
                 logger.error("Wrong event data: %s", event)
                 nevents_wrong += 1
                 continue
