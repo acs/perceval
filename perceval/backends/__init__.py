@@ -33,6 +33,7 @@ from .jira import Jira, JiraCommand
 from .kitsune import Kitsune, KitsuneCommand
 from .mbox import MBox, MBoxCommand
 from .mediawiki import MediaWiki, MediaWikiCommand
+from .mozillaclub import MozillaClub, MozillaClubCommand
 from .phabricator import Phabricator, PhabricatorCommand
 from .pipermail import Pipermail, PipermailCommand
 from .redmine import Redmine, RedmineCommand
@@ -56,6 +57,7 @@ PERCEVAL_BACKENDS = {
                      'kitsune'       : Kitsune,
                      'mbox'          : MBox,
                      'mediawiki'     : MediaWiki,
+                     'mozillaclub'   : MozillaClub,
                      'phabricator'   : Phabricator,
                      'pipermail'     : Pipermail,
                      'redmine'       : Redmine,
@@ -78,6 +80,7 @@ PERCEVAL_CMDS = {
                  'kitsune'       : KitsuneCommand,
                  'mbox'          : MBoxCommand,
                  'mediawiki'     : MediaWikiCommand,
+                 'mozillaclub'   : MozillaClubCommand,
                  'phabricator'   : PhabricatorCommand,
                  'pipermail'     : PipermailCommand,
                  'redmine'       : RedmineCommand,
