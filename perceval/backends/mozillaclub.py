@@ -88,7 +88,8 @@ class MozillaClub(Backend):
         """Fetch events from the MozillaClub url.
 
         The method retrieves, from a MozillaClub url, the
-        events.
+        events. The data is a Google spreadsheet retrieved using
+        the feed API REST.
 
         :returns: a generator of events
         """
@@ -97,6 +98,7 @@ class MozillaClub(Backend):
 
         nevents = 0  # number of events processed
         nevents_wrong = 0  # number of events with wrong data
+        event_fields = {}
 
         self._purge_cache_queue()
 
@@ -106,9 +108,9 @@ class MozillaClub(Backend):
 
         sheet_json = json.loads(raw_cells)
         cells = sheet_json['feed']['entry']
-        cell_cols = len(MozillaClub.event_template.keys())
 
         # Check that the columns names are the same we have as template
+        # Create the event template from the data retrieved
         column_names = True
         while column_names:
             cell = cells[0]
@@ -119,17 +121,19 @@ class MozillaClub(Backend):
             cell = cells.pop(0)
             col = cell['gs$cell']['col']
             name = cell['content']['$t']
-            if name != MozillaClub.event_template[col]:
-                logger.error("Event template changed in spreadsheet %s vs %s", name, MozillaClub.event_template[col])
-                raise RuntimeError
+            event_fields[col] = name
+            if event_fields[col] != MozillaClub.event_template[col]:
+                logger.warning("Event template changed in spreadsheet %s vs %s", name, MozillaClub.event_template[col])
+        cell_cols = len(event_fields.keys())
 
+        # Process all events reading the rows according to the event template
         while cells:
             # Get all cols from a row to build the event
             event = {}
             last_col = 0
             # Fill the empy with all fields as None
             for i in range (1, cell_cols+1):
-                event[MozillaClub.event_template[str(i)]] = None
+                event[event_fields[str(i)]] = None
             while True:
                 # Process event data
                 cell = cells[0]
@@ -139,7 +143,7 @@ class MozillaClub(Backend):
                     break
                 else:
                     cell = cells.pop(0)
-                event[MozillaClub.event_template[str(col)]] = cell['content']['$t']
+                event[event_fields[str(col)]] = cell['content']['$t']
                 if int(col) >= cell_cols:
                     # row (event) completed
                     break
