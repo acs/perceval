@@ -122,8 +122,11 @@ class MozillaClub(Backend):
             col = cell['gs$cell']['col']
             name = cell['content']['$t']
             event_fields[col] = name
-            if event_fields[col] != MozillaClub.event_template[col]:
-                logger.warning("Event template changed in spreadsheet %s vs %s", name, MozillaClub.event_template[col])
+            if col in MozillaClub.event_template:
+                if event_fields[col] != MozillaClub.event_template[col]:
+                    logger.warning("Event template changed in spreadsheet %s vs %s", name, MozillaClub.event_template[col])
+            else:
+                logger.warning("Event template changed in spreadsheet. New column: %s", name)
         cell_cols = len(event_fields.keys())
 
         # Process all events reading the rows according to the event template
