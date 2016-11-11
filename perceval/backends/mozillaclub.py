@@ -48,8 +48,7 @@ class MozillaClub(Backend):
 
     :param url: Mozilla Club Events url
     :param cache: cache object to store raw data
-    :param origin: identifier of the repository; when `None` or an
-        empty string are given, it will be set to `url` value
+    :param tag: label used to mark the data
     """
     version = '0.1.0'
 
@@ -76,10 +75,10 @@ class MozillaClub(Backend):
         "20": "Event Cover Photo"
     }
 
-    def __init__(self, url=MOZILLA_CLUB_URL, cache=None, origin='mozillaclub'):
-        origin = origin if origin else url
+    def __init__(self, url=MOZILLA_CLUB_URL, cache=None, tag='mozillaclub'):
+        origin = url
         self.url = url
-        super().__init__(origin, cache=cache)
+        super().__init__(origin, tag=tag, cache=cache)
         self.client = MozillaClubClient(url)
         self.__users = {}  # internal users cache
 
@@ -249,7 +248,7 @@ class MozillaClubCommand(BackendCommand):
     def __init__(self, *args):
         super().__init__(*args)
         self.url = self.parsed_args.url
-        self.origin = self.parsed_args.origin
+        self.tag = self.parsed_args.tag
         self.outfile = self.parsed_args.outfile
 
         if not self.parsed_args.no_cache:
@@ -269,7 +268,7 @@ class MozillaClubCommand(BackendCommand):
         else:
             cache = None
 
-        self.backend = MozillaClub(cache=cache, origin=self.origin)
+        self.backend = MozillaClub(cache=cache, tag=self.tag)
 
     def run(self):
         """Fetch and print the Club Events data.
