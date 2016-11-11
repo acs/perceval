@@ -133,10 +133,10 @@ class MozillaClub(Backend):
             # Get all cols from a row to build the event
             event = {}
             last_col = 0
-            # Fill the empy with all fields as None
+            # Fill the empty event with all fields as None
             for i in range (1, cell_cols+1):
                 event[event_fields[str(i)]] = None
-            while True:
+            while True and cells:
                 # Process event data
                 cell = cells[0]
                 col = cell['gs$cell']['col']
@@ -191,6 +191,15 @@ class MozillaClub(Backend):
     def metadata_id(item):
         """Extracts the identifier from an event item."""
         return str(item['Date of Event']+"_"+item['Club Name'])
+
+    @staticmethod
+    def metadata_category(item):
+        """Extracts the category from a item.
+
+        This backend only generates one type of item which is
+        'event'.
+        """
+        return 'event'
 
     @staticmethod
     def metadata_updated_on(item):
