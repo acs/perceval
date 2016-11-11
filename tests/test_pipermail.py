@@ -67,6 +67,16 @@ class TestPipermailList(unittest.TestCase):
         self.assertEqual(pmls.dirpath, self.tmp_path)
         self.assertEqual(pmls.url, PIPERMAIL_URL)
 
+    def test_has_caching(self):
+        """Test if it returns False when has_caching is called"""
+
+        self.assertEqual(Pipermail.has_caching(), False)
+
+    def test_has_resuming(self):
+        """Test if it returns True when has_resuming is called"""
+
+        self.assertEqual(Pipermail.has_resuming(), True)
+
     @httpretty.activate
     def test_fetch(self):
         """Test whether archives are fetched"""
@@ -187,20 +197,23 @@ class TestPipermailBackend(unittest.TestCase):
     def test_initialization(self):
         """Test whether attributes are initializated"""
 
-        backend = Pipermail('http://example.com/', self.tmp_path, origin='test')
+        backend = Pipermail('http://example.com/', self.tmp_path, tag='test')
 
         self.assertEqual(backend.url, 'http://example.com/')
         self.assertEqual(backend.uri, 'http://example.com/')
         self.assertEqual(backend.dirpath, self.tmp_path)
-        self.assertEqual(backend.origin, 'test')
+        self.assertEqual(backend.origin, 'http://example.com/')
+        self.assertEqual(backend.tag, 'test')
 
-        # When origin is empty or None it will be set to
+        # When tag is empty or None it will be set to
         # the value in uri
         backend = Pipermail('http://example.com/', self.tmp_path)
         self.assertEqual(backend.origin, 'http://example.com/')
+        self.assertEqual(backend.tag, 'http://example.com/')
 
-        backend = Pipermail('http://example.com/', self.tmp_path, origin='')
+        backend = Pipermail('http://example.com/', self.tmp_path, tag='')
         self.assertEqual(backend.origin, 'http://example.com/')
+        self.assertEqual(backend.tag, 'http://example.com/')
 
     @httpretty.activate
     def test_fetch(self):
@@ -252,6 +265,8 @@ class TestPipermailBackend(unittest.TestCase):
             self.assertEqual(message['origin'], 'http://example.com/')
             self.assertEqual(message['uuid'], expected[x][1])
             self.assertEqual(message['updated_on'], expected[x][2])
+            self.assertEqual(message['category'], 'message')
+            self.assertEqual(message['tag'], 'http://example.com/')
 
     @httpretty.activate
     def test_fetch_apache(self):
@@ -303,6 +318,8 @@ class TestPipermailBackend(unittest.TestCase):
             self.assertEqual(message['origin'], 'http://example.com/')
             self.assertEqual(message['uuid'], expected[x][1])
             self.assertEqual(message['updated_on'], expected[x][2])
+            self.assertEqual(message['category'], 'message')
+            self.assertEqual(message['tag'], 'http://example.com/')
 
     @httpretty.activate
     def test_fetch_from_date(self):
@@ -361,6 +378,8 @@ class TestPipermailBackend(unittest.TestCase):
             self.assertEqual(message['origin'], 'http://example.com/')
             self.assertEqual(message['uuid'], expected[x][1])
             self.assertEqual(message['updated_on'], expected[x][2])
+            self.assertEqual(message['category'], 'message')
+            self.assertEqual(message['tag'], 'http://example.com/')
 
     @httpretty.activate
     def test_fetch_empty(self):
@@ -386,13 +405,13 @@ class TestPipermailCommand(unittest.TestCase):
 
         args = ['http://example.com/',
                 '--mboxes-path', '/tmp/perceval/',
-                '--origin', 'test']
+                '--tag', 'test']
 
         cmd = PipermailCommand(*args)
         self.assertIsInstance(cmd.parsed_args, argparse.Namespace)
         self.assertEqual(cmd.parsed_args.url, 'http://example.com/')
         self.assertEqual(cmd.parsed_args.mboxes_path, '/tmp/perceval/')
-        self.assertEqual(cmd.parsed_args.origin, 'test')
+        self.assertEqual(cmd.parsed_args.tag, 'test')
         self.assertIsInstance(cmd.backend, Pipermail)
 
     def test_argument_parser(self):

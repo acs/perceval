@@ -164,20 +164,32 @@ class TestMBoxBackend(TestBaseMBox):
     def test_initialization(self):
         """Test whether attributes are initializated"""
 
-        backend = MBox('http://example.com/', self.tmp_path, origin='test')
+        backend = MBox('http://example.com/', self.tmp_path, tag='test')
 
         self.assertEqual(backend.uri, 'http://example.com/')
         self.assertEqual(backend.dirpath, self.tmp_path)
-        self.assertEqual(backend.origin, 'test')
+        self.assertEqual(backend.origin, 'http://example.com/')
+        self.assertEqual(backend.tag, 'test')
 
         # When origin is empty or None it will be set to
         # the value in uri
         backend = MBox('http://example.com/', self.tmp_path)
         self.assertEqual(backend.origin, 'http://example.com/')
+        self.assertEqual(backend.tag, 'http://example.com/')
 
-        backend = MBox('http://example.com/', self.tmp_path, origin='')
+        backend = MBox('http://example.com/', self.tmp_path, tag='')
         self.assertEqual(backend.origin, 'http://example.com/')
+        self.assertEqual(backend.tag, 'http://example.com/')
 
+    def test_has_caching(self):
+        """Test if it returns False when has_caching is called"""
+
+        self.assertEqual(MBox.has_caching(), False)
+
+    def test_has_resuming(self):
+        """Test if it returns True when has_resuming is called"""
+
+        self.assertEqual(MBox.has_resuming(), True)
 
     def test_fetch(self):
         """Test whether it parses a set of mbox files"""
@@ -202,6 +214,8 @@ class TestMBoxBackend(TestBaseMBox):
             self.assertEqual(message['origin'], 'http://example.com/')
             self.assertEqual(message['uuid'], expected[x][1])
             self.assertEqual(message['updated_on'], expected[x][2])
+            self.assertEqual(message['category'], 'message')
+            self.assertEqual(message['tag'], 'http://example.com/')
 
     def test_fetch_from_date(self):
         """Test whether a list of messages is returned since a given date"""
@@ -225,6 +239,8 @@ class TestMBoxBackend(TestBaseMBox):
             self.assertEqual(message['origin'], 'http://example.com/')
             self.assertEqual(message['uuid'], expected[x][1])
             self.assertEqual(message['updated_on'], expected[x][2])
+            self.assertEqual(message['category'], 'message')
+            self.assertEqual(message['tag'], 'http://example.com/')
 
     def test_ignore_messages(self):
         """Test if it ignores some messages without mandatory fields"""
@@ -405,13 +421,13 @@ class TestMBoxCommand(unittest.TestCase):
         """Test if the class is initialized"""
 
         args = ['http://example.com/', '/tmp/perceval/',
-                '--origin', 'test']
+                '--tag', 'test']
 
         cmd = MBoxCommand(*args)
         self.assertIsInstance(cmd.parsed_args, argparse.Namespace)
         self.assertEqual(cmd.parsed_args.uri, 'http://example.com/')
         self.assertEqual(cmd.parsed_args.mboxes, '/tmp/perceval/')
-        self.assertEqual(cmd.parsed_args.origin, 'test')
+        self.assertEqual(cmd.parsed_args.tag, 'test')
         self.assertIsInstance(cmd.backend, MBox)
 
     def test_argument_parser(self):

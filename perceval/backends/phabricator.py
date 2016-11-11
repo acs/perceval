@@ -40,20 +40,20 @@ class Phabricator(Backend):
 
     This class allows to fetch the tasks stored on a Phabricator
     server. Initialize this class passing the URL of this server
-    and the API token.
+    and the API token. The origin of the data will be set to this
+    URL.
 
     :param url: URL of the server
     :param api_token: token needed to use the API
+    :param tag: label used to mark the data
     :param cache: cache object to store raw data
-    :param origin: identifier of the repository; when `None` or an
-        empty string are given, it will be set to `url`
     """
-    version = '0.2.0'
+    version = '0.5.0'
 
-    def __init__(self, url, api_token, cache=None, origin=None):
-        origin = origin if origin else url
+    def __init__(self, url, api_token, tag=None, cache=None):
+        origin = url
 
-        super().__init__(origin, cache=cache)
+        super().__init__(origin, tag=tag, cache=cache)
         self.url = url
         self.client = ConduitClient(url, api_token)
         self._users = {}
@@ -327,6 +327,22 @@ class Phabricator(Backend):
 
             yield task
 
+    @classmethod
+    def has_caching(cls):
+        """Returns whether it supports caching items on the fetch process.
+
+        :returns: this backend supports items cache
+        """
+        return True
+
+    @classmethod
+    def has_resuming(cls):
+        """Returns whether it supports to resume the fetch process.
+
+        :returns: this backend supports items resuming
+        """
+        return True
+
     @staticmethod
     def metadata_id(item):
         """Extracts the identifier from a Phabricator item."""
@@ -346,6 +362,15 @@ class Phabricator(Backend):
         :returns: a UNIX timestamp
         """
         return float(item['fields']['dateModified'])
+
+    @staticmethod
+    def metadata_category(item):
+        """Extracts the category from a Phabricator item.
+
+        This backend only generates one type of item which is
+        'task'.
+        """
+        return 'task'
 
     @staticmethod
     def parse_tasks(raw_json):
@@ -421,7 +446,7 @@ class PhabricatorCommand(BackendCommand):
         self.backend_token = self.parsed_args.backend_token
         self.from_date = str_to_datetime(self.parsed_args.from_date)
         self.outfile = self.parsed_args.outfile
-        self.origin = self.parsed_args.origin
+        self.tag = self.parsed_args.tag
 
         if not self.parsed_args.no_cache:
             if not self.parsed_args.cache_path:
@@ -442,8 +467,8 @@ class PhabricatorCommand(BackendCommand):
 
         self.backend = Phabricator(self.url,
                                    self.backend_token,
-                                   cache=cache,
-                                   origin=self.origin)
+                                   tag=self.tag,
+                                   cache=cache)
 
     def run(self):
         """Fetch and print the tasks.
@@ -532,10 +557,14 @@ class ConduitClient:
         :param from_date: retrieve tasks that where updated from that date;
             dates are converted epoch time.
         """
-        ts = int(datetime_to_utc(from_date).timestamp())
-        consts = [{
-            self.PMODIFIED_START : ts,
-        }]
+        # Convert 'from_date' to epoch timestamp.
+        # Zero value (1970-01-01 00:00:00) is not allowed for
+        # 'modifiedStart' so it will be set to 1, by default.
+        ts = int(datetime_to_utc(from_date).timestamp()) or 1
+
+        consts = {
+            self.PMODIFIED_START : ts
+        }
 
         attachments = {
             self. PPROJECTS : True

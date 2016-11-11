@@ -46,19 +46,19 @@ class Confluence(Backend):
 
     This class allows the fetch the historical contents (content
     versions) stored on a Confluence server. Initialize this class
-    passing the URL os this server.
+    passing the URL os this server. The `url` will be set as the
+    origin of the data.
 
     :param url: URL of the server
+    :param tag: label used to mark the data
     :param cache: cache object to store raw data
-    :param origin: identifier of the repository; when `None` or an
-        empty string are given, it will be set to `url`
     """
-    version = '0.1.0'
+    version = '0.4.0'
 
-    def __init__(self, url, cache=None, origin=None):
-        origin = origin if origin else url
+    def __init__(self, url, tag=None, cache=None):
+        origin = url
 
-        super().__init__(origin, cache=cache)
+        super().__init__(origin, tag=tag, cache=cache)
         self.url = url
         self.client = ConfluenceClient(url)
 
@@ -176,6 +176,22 @@ class Confluence(Backend):
             fetching = not hc['history']['latest']
             version += 1
 
+    @classmethod
+    def has_caching(cls):
+        """Returns whether it supports caching items on the fetch process.
+
+        :returns: this backend supports items cache
+        """
+        return True
+
+    @classmethod
+    def has_resuming(cls):
+        """Returns whether it supports to resume the fetch process.
+
+        :returns: this backend supports items resuming
+        """
+        return True
+
     @staticmethod
     def metadata_id(item):
         """Extracts the identifier from a Confluence item.
@@ -207,6 +223,15 @@ class Confluence(Backend):
         ts = str_to_datetime(ts)
 
         return ts.timestamp()
+
+    @staticmethod
+    def metadata_category(item):
+        """Extracts the category from a Confluence item.
+
+        This backend only generates one type of item which is
+        'historical content'.
+        """
+        return 'historical content'
 
     @staticmethod
     def parse_contents_summary(raw_json):
@@ -248,7 +273,7 @@ class ConfluenceCommand(BackendCommand):
 
         self.url = self.parsed_args.url
         self.from_date = str_to_datetime(self.parsed_args.from_date)
-        self.origin = self.parsed_args.origin
+        self.tag = self.parsed_args.tag
         self.outfile = self.parsed_args.outfile
 
         if not self.parsed_args.no_cache:
@@ -269,8 +294,8 @@ class ConfluenceCommand(BackendCommand):
             cache = None
 
         self.backend = Confluence(self.url,
-                                  cache=cache,
-                                  origin=self.origin)
+                                  tag=self.tag,
+                                  cache=cache)
 
     def run(self):
         """Fetch and print the contents.

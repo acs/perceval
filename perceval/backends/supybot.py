@@ -52,13 +52,19 @@ class Supybot(Backend):
 
     The format of the messages must also follow a pattern. This
     patterns can be found in `SupybotParser` class documentation.
+
+    :param uri: URI of the IRC archives; typically, the URL of their
+        IRC channel
+    :param dirpath: directory path where the archives are stored
+    :param tag: label used to mark the data
+    :param cache: cache object to store raw data
     """
-    version = '0.1.1'
+    version = '0.4.1'
 
-    def __init__(self, uri, dirpath, cache=None, origin=None):
-        origin = origin if origin else uri
+    def __init__(self, uri, dirpath, tag=None, cache=None):
+        origin = uri
 
-        super().__init__(origin, cache=cache)
+        super().__init__(origin, tag=tag, cache=cache)
         self.uri = uri
         self.dirpath = dirpath
 
@@ -146,9 +152,25 @@ class Supybot(Backend):
 
         return dt
 
+    @classmethod
+    def has_caching(cls):
+        """Returns whether it supports caching items on the fetch process.
+
+        :returns: this backend does not support items cache
+        """
+        return False
+
+    @classmethod
+    def has_resuming(cls):
+        """Returns whether it supports to resume the fetch process.
+
+        :returns: this backend supports items resuming
+        """
+        return True
+
     @staticmethod
     def metadata_id(item):
-        """Extracts the identifier from a message item.
+        """Extracts the identifier from a Supybot item.
 
         This identifier will be the mix of two fields because IRC
         messages does not have any unique identifier. In this case,
@@ -160,7 +182,7 @@ class Supybot(Backend):
 
     @staticmethod
     def metadata_updated_on(item):
-        """Extracts the update time from a message item.
+        """Extracts the update time from a Supybot item.
 
         The timestamp used is extracted from 'timestamp' field.
         This date is converted to UNIX timestamp format taking into
@@ -174,6 +196,15 @@ class Supybot(Backend):
         ts = str_to_datetime(ts)
 
         return ts.timestamp()
+
+    @staticmethod
+    def metadata_category(item):
+        """Extracts the category from a Supybot item.
+
+        This backend only generates one type of item which is
+        'message'.
+        """
+        return 'message'
 
     @staticmethod
     def parse_supybot_log(filepath):
@@ -208,13 +239,13 @@ class SupybotCommand(BackendCommand):
         self.uri = self.parsed_args.uri
         self.ircdir = self.parsed_args.ircdir
         self.outfile = self.parsed_args.outfile
-        self.origin = self.parsed_args.origin
+        self.tag = self.parsed_args.tag
         self.from_date = str_to_datetime(self.parsed_args.from_date)
 
         cache = None
 
         self.backend = Supybot(self.uri, self.ircdir,
-                               cache=cache, origin=self.origin)
+                               tag=self.tag, cache=cache)
 
     def run(self):
         """Fetch and print the IRC messages.
@@ -283,6 +314,7 @@ class SupybotParser:
     COMMENT_PATTERN = r"^<(?P<nick>(.*?)(!.*)?)>\s(?P<body>.+)$"
     COMMENT_ACTION_PATTERN = r"^\*\s(?P<body>(?P<nick>(.*?)(!.*)?)\s.+)$"
     SERVER_PATTERN = r"^\*\*\*\s(?P<body>(?P<nick>(.*?)(!.*)?)\s.+)$"
+    BOT_PATTERN = r"^-(?P<nick>(.*?)(!.*)?)-\s(?P<body>.+)$"
     EMPTY_PATTERN = r"^\s*$"
     EMPTY_COMMENT_PATTERN = r"^<(.*?)(!.*)?>\s*$"
 
@@ -291,6 +323,7 @@ class SupybotParser:
     SUPYBOT_COMMENT_REGEX = re.compile(COMMENT_PATTERN, re.VERBOSE)
     SUPYBOT_COMMENT_ACTION_REGEX = re.compile(COMMENT_ACTION_PATTERN, re.VERBOSE)
     SUPYBOT_SERVER_REGEX = re.compile(SERVER_PATTERN, re.VERBOSE)
+    SUPYBOT_BOT_REGEX = re.compile(BOT_PATTERN, re.VERBOSE)
     SUPYBOT_EMPTY_REGEX = re.compile(EMPTY_PATTERN, re.VERBOSE)
     SUPYBOT_EMPTY_COMMENT_REGEX = re.compile(EMPTY_COMMENT_PATTERN, re.VERBOSE)
 
@@ -349,7 +382,8 @@ class SupybotParser:
 
         patterns = [(self.SUPYBOT_COMMENT_REGEX, self.TCOMMENT),
                     (self.SUPYBOT_COMMENT_ACTION_REGEX, self.TCOMMENT),
-                    (self.SUPYBOT_SERVER_REGEX, self.TSERVER)]
+                    (self.SUPYBOT_SERVER_REGEX, self.TSERVER),
+                    (self.SUPYBOT_BOT_REGEX, self.TCOMMENT)]
 
         for p in patterns:
             m = p[0].match(line)

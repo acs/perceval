@@ -47,6 +47,8 @@ KITSUNE_API = KITSUNE_SERVER_URL + '/api/2/'
 KITSUNE_API_QUESTION = KITSUNE_SERVER_URL + '/api/2/question/'
 KITSUNE_API_ANSWER = KITSUNE_SERVER_URL + '/api/2/answer/'
 
+KITSUNE_SERVER_FAIL_PAGE = 69
+KITSUNE_ITEMS_PER_PAGE = 20
 
 def read_file(filename, mode='r'):
     with open(filename, mode) as f:
@@ -87,6 +89,12 @@ class HTTPServer():
                     body = mozilla_questions_2
                 else:
                     body = mozilla_question_answers_1
+            elif page == str(KITSUNE_SERVER_FAIL_PAGE):
+                # To tests for Internal Server Error
+                return (500, headers, '')
+            elif page == str(KITSUNE_SERVER_FAIL_PAGE + 1):
+                # Next page to the server fail returns questions
+                return (200, headers, mozilla_questions_2)
             else:
                 return (404, headers, '')
 
@@ -112,21 +120,34 @@ class TestKitsuneBackend(unittest.TestCase):
     def test_initialization(self):
         """Test whether attributes are initializated"""
 
-        kitsune = Kitsune(KITSUNE_SERVER_URL, origin='test')
+        kitsune = Kitsune(KITSUNE_SERVER_URL, tag='test')
 
         self.assertEqual(kitsune.url, KITSUNE_SERVER_URL)
-        self.assertEqual(kitsune.origin, 'test')
+        self.assertEqual(kitsune.origin, KITSUNE_SERVER_URL)
+        self.assertEqual(kitsune.tag, 'test')
         self.assertIsInstance(kitsune.client, KitsuneClient)
 
-        # When origin is empty or None it will be set to
+        # When tag is empty or None it will be set to
         # the value in url
         kitsune = Kitsune(KITSUNE_SERVER_URL)
         self.assertEqual(kitsune.url, KITSUNE_SERVER_URL)
         self.assertEqual(kitsune.origin, KITSUNE_SERVER_URL)
+        self.assertEqual(kitsune.tag, KITSUNE_SERVER_URL)
 
-        kitsune = Kitsune(KITSUNE_SERVER_URL, origin='')
+        kitsune = Kitsune(KITSUNE_SERVER_URL, tag='')
         self.assertEqual(kitsune.url, KITSUNE_SERVER_URL)
         self.assertEqual(kitsune.origin, KITSUNE_SERVER_URL)
+        self.assertEqual(kitsune.tag, KITSUNE_SERVER_URL)
+
+    def test_has_caching(self):
+        """Test if it returns True when has_caching is called"""
+
+        self.assertEqual(Kitsune.has_caching(), True)
+
+    def test_has_resuming(self):
+        """Test if it returns True when has_resuming is called"""
+
+        self.assertEqual(Kitsune.has_resuming(), True)
 
     def __check_questions_contents(self, questions):
         self.assertEqual(questions[0]['data']['num_votes'], 2)
@@ -136,6 +157,8 @@ class TestKitsuneBackend(unittest.TestCase):
         self.assertEqual(questions[0]['uuid'], '8fa01e2aadf37c6f2fa300ce529fd1a23feac333')
         self.assertEqual(questions[0]['updated_on'], 1467798846.0)
         self.assertEqual(questions[0]['offset'], 0)
+        self.assertEqual(questions[0]['category'], 'question')
+        self.assertEqual(questions[0]['tag'], KITSUNE_SERVER_URL)
 
         if len(questions) > 1:
             self.assertEqual(questions[1]['data']['num_votes'], 1)
@@ -145,6 +168,8 @@ class TestKitsuneBackend(unittest.TestCase):
             self.assertEqual(questions[1]['uuid'], '7a3fbfb33cfaaa32b2f121994faf019a054a9a06')
             self.assertEqual(questions[1]['updated_on'], 1467798439.0)
             self.assertEqual(questions[1]['offset'], 1)
+            self.assertEqual(questions[1]['category'], 'question')
+            self.assertEqual(questions[1]['tag'], KITSUNE_SERVER_URL)
 
     @httpretty.activate
     def test_fetch(self):
@@ -203,6 +228,18 @@ class TestKitsuneBackend(unittest.TestCase):
         questions = [event for event in kitsune.fetch()]
 
         self.assertEqual(len(questions), 0)
+
+    @httpretty.activate
+    def test_fetch_server_error(self):
+        """Test whether it works when the server fails"""
+
+        HTTPServer.routes(empty=True)
+
+        kitsune = Kitsune(KITSUNE_SERVER_URL)
+        offset = (KITSUNE_SERVER_FAIL_PAGE - 1) * KITSUNE_ITEMS_PER_PAGE
+        questions = [event for event in kitsune.fetch(offset=offset)]
+        # After the failing page there are a page with 2 questions
+        self.assertEqual(len(questions), 2)
 
 
 class TestKitsuneBackendCache(unittest.TestCase):
@@ -263,12 +300,12 @@ class TestKitsuneCommand(unittest.TestCase):
     def test_parsing_on_init(self):
         """Test if the class is initialized"""
 
-        args = ['--origin', 'test', KITSUNE_SERVER_URL]
+        args = ['--tag', 'test', KITSUNE_SERVER_URL]
 
         cmd = KitsuneCommand(*args)
         self.assertIsInstance(cmd.parsed_args, argparse.Namespace)
         self.assertEqual(cmd.parsed_args.url, KITSUNE_SERVER_URL)
-        self.assertEqual(cmd.parsed_args.origin, 'test')
+        self.assertEqual(cmd.parsed_args.tag, 'test')
         self.assertIsInstance(cmd.backend, Kitsune)
 
     def test_argument_parser(self):

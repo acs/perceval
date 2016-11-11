@@ -58,20 +58,19 @@ class Pipermail(MBox):
     This class allows the fetch the email messages stored on a Pipermail
     archiver. Initialize this class passing the URL where the archiver is
     and the directory path where the mbox files will be fetched and
-    stored.
+    stored. The origin of the data will be set to the value of `url`.
 
     :param url: URL to the Pipermail archiver
     :param dirpath: directory path where the mboxes are stored
+    :param tag: label used to mark the data
     :param cache: cache object to store raw data
-    :param origin: identifier of the repository; when `None` or an
-        empty string are given, it will be set to `url`
     """
-    version = '0.1.0'
+    version = '0.4.1'
 
-    def __init__(self, url, dirpath, cache=None, origin=None):
-        origin = origin if origin else url
+    def __init__(self, url, dirpath, tag=None, cache=None):
+        origin = url
 
-        super().__init__(url, dirpath, cache=cache, origin=origin)
+        super().__init__(url, dirpath, tag=tag, cache=cache)
         self.url = url
 
     @metadata
@@ -98,6 +97,22 @@ class Pipermail(MBox):
 
         logger.info("Fetch process completed")
 
+    @classmethod
+    def has_caching(cls):
+        """Returns whether it supports caching items on the fetch process.
+
+        :returns: this backend dooes not support items cache
+        """
+        return False
+
+    @classmethod
+    def has_resuming(cls):
+        """Returns whether it supports to resume the fetch process.
+
+        :returns: this backend supports items resuming
+        """
+        return True
+
 
 class PipermailCommand(BackendCommand):
     """Class to run Pipermail backend from the command line."""
@@ -107,7 +122,7 @@ class PipermailCommand(BackendCommand):
 
         self.url = self.parsed_args.url
         self.outfile = self.parsed_args.outfile
-        self.origin = self.parsed_args.origin
+        self.tag = self.parsed_args.tag
         self.from_date = str_to_datetime(self.parsed_args.from_date)
 
         if not self.parsed_args.mboxes_path:
@@ -119,7 +134,7 @@ class PipermailCommand(BackendCommand):
         cache = None
 
         self.backend = Pipermail(self.url, self.mboxes_path,
-                                 cache=cache, origin=self.origin)
+                                 tag=self.tag, cache=cache)
 
     def run(self):
         """Fetch and print the email messages.
@@ -287,12 +302,12 @@ class PipermailList(MailingList):
         return dt
 
     def _download_archive(self, url, filepath):
-        r = requests.get(url)
+        r = requests.get(url, stream=True)
         r.raise_for_status()
 
         try:
             with open(filepath, 'wb') as fd:
-                fd.write(r.content)
+                fd.write(r.raw.read())
         except OSError as e:
             logger.warning("Ignoring %s archive due to: %s", url, str(e))
             return False

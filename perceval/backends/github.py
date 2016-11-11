@@ -71,29 +71,25 @@ class GitHub(Backend):
     :param owner: GitHub owener
     :param repository: GitHub repository from the owner
     :param backend_token: GitHub auth token to access the API
-    :param base_url: GitHub URL in enterprise edition case
+    :param base_url: GitHub URL in enterprise edition case;
+        when no value is set the backend will be fetch the data
+        from the GitHub public site.
+    :param tag: label used to mark the data
     :param cache: use issues already retrieved in cache
-    :param origin: identifier of the repository; when `None` or an
-        empty string are given, it will be set to the URL built
-        with the values of `base_url`, `owner` and `repository`;
-        when `base_url` is empty or `None` it will be set to
-        `GITHUB_URL` value
     :param sleep_for_rate: sleep until rate limit is reset
     :param min_rate_to_sleep: minimun rate needed to sleep until
          it will be reset
     """
-    version = '0.2.2'
-
+    version = '0.5.0'
 
     def __init__(self, owner=None, repository=None,
                  backend_token=None, base_url=None,
-                 cache=None, origin=None,
+                 tag=None, cache=None,
                  sleep_for_rate=False, min_rate_to_sleep=MIN_RATE_LIMIT):
-        if not origin:
-            origin = base_url if base_url else GITHUB_URL
-            origin = urljoin(origin, owner, repository)
+        origin = base_url if base_url else GITHUB_URL
+        origin = urljoin(origin, owner, repository)
 
-        super().__init__(origin, cache=cache)
+        super().__init__(origin, tag=tag, cache=cache)
         self.owner = owner
         self.repository = repository
         self.backend_token = backend_token
@@ -214,6 +210,22 @@ class GitHub(Backend):
                         self._users[issue[field]['login']]
             yield issue
 
+    @classmethod
+    def has_caching(cls):
+        """Returns whether it supports caching items on the fetch process.
+
+        :returns: this backend supports items cache
+        """
+        return True
+
+    @classmethod
+    def has_resuming(cls):
+        """Returns whether it supports to resume the fetch process.
+
+        :returns: this backend supports items resuming
+        """
+        return True
+
     @staticmethod
     def metadata_id(item):
         """Extracts the identifier from a GitHub item."""
@@ -236,6 +248,15 @@ class GitHub(Backend):
         ts = str_to_datetime(ts)
 
         return ts.timestamp()
+
+    @staticmethod
+    def metadata_category(item):
+        """Extracts the category from a GitHub item.
+
+        This backend only generates one type of item which is
+        'issue'.
+        """
+        return 'issue'
 
 
 class GitHubClient:
@@ -380,7 +401,7 @@ class GitHubCommand(BackendCommand):
         self.repository = self.parsed_args.repository
         self.backend_token = self.parsed_args.backend_token
         self.from_date = str_to_datetime(self.parsed_args.from_date)
-        self.origin = self.parsed_args.origin
+        self.tag = self.parsed_args.tag
         self.outfile = self.parsed_args.outfile
         self.sleep_for_rate = self.parsed_args.sleep_for_rate
         self.min_rate_to_sleep = self.parsed_args.min_rate_to_sleep
@@ -405,7 +426,7 @@ class GitHubCommand(BackendCommand):
 
         self.backend = GitHub(self.owner, self.repository,
                               backend_token=self.backend_token,
-                              cache=cache, origin=self.origin,
+                              tag=self.tag, cache=cache,
                               sleep_for_rate=self.sleep_for_rate,
                               min_rate_to_sleep=self.min_rate_to_sleep)
 

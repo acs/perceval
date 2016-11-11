@@ -57,6 +57,40 @@ def read_file(filename, mode='r'):
 class TestGitHubBackend(unittest.TestCase):
     """ GitHub backend tests """
 
+    def test_initialization(self):
+        """Test whether attributes are initializated"""
+
+        github = GitHub('zhquan_example', 'repo', 'aaa', tag='test')
+
+        self.assertEqual(github.owner, 'zhquan_example')
+        self.assertEqual(github.repository, 'repo')
+        self.assertEqual(github.origin, 'https://github.com/zhquan_example/repo')
+        self.assertEqual(github.tag, 'test')
+
+        # When tag is empty or None it will be set to
+        # the value in origin
+        github = GitHub('zhquan_example', 'repo', 'aaa')
+        self.assertEqual(github.owner, 'zhquan_example')
+        self.assertEqual(github.repository, 'repo')
+        self.assertEqual(github.origin, 'https://github.com/zhquan_example/repo')
+        self.assertEqual(github.tag, 'https://github.com/zhquan_example/repo')
+
+        github = GitHub('zhquan_example', 'repo', 'aaa', tag='')
+        self.assertEqual(github.owner, 'zhquan_example')
+        self.assertEqual(github.repository, 'repo')
+        self.assertEqual(github.origin, 'https://github.com/zhquan_example/repo')
+        self.assertEqual(github.tag, 'https://github.com/zhquan_example/repo')
+
+    def test_has_caching(self):
+        """Test if it returns True when has_caching is called"""
+
+        self.assertEqual(GitHub.has_caching(), True)
+
+    def test_has_resuming(self):
+        """Test if it returns True when has_resuming is called"""
+
+        self.assertEqual(GitHub.has_resuming(), True)
+
     @httpretty.activate
     def test_fetch(self):
         """ Test whether a list of issues is returned """
@@ -97,6 +131,8 @@ class TestGitHubBackend(unittest.TestCase):
         self.assertEqual(issues[0]['origin'], 'https://github.com/zhquan_example/repo')
         self.assertEqual(issues[0]['uuid'], '58c073fd2a388c44043b9cc197c73c5c540270ac')
         self.assertEqual(issues[0]['updated_on'], 1454328801.0)
+        self.assertEqual(issues[0]['category'], 'issue')
+        self.assertEqual(issues[0]['tag'], 'https://github.com/zhquan_example/repo')
         self.assertDictEqual(issues[0]['data'], expected)
 
     @httpretty.activate
@@ -148,12 +184,16 @@ class TestGitHubBackend(unittest.TestCase):
         self.assertEqual(issues[0]['origin'], 'https://github.com/zhquan_example/repo')
         self.assertEqual(issues[0]['uuid'], '58c073fd2a388c44043b9cc197c73c5c540270ac')
         self.assertEqual(issues[0]['updated_on'], 1458035782.0)
+        self.assertEqual(issues[0]['category'], 'issue')
+        self.assertEqual(issues[0]['tag'], 'https://github.com/zhquan_example/repo')
         self.assertDictEqual(issues[0]['data'], expected_1)
 
         expected_2 = json.loads(read_file('data/github_issue_expected_2'))
         self.assertEqual(issues[1]['origin'], 'https://github.com/zhquan_example/repo')
         self.assertEqual(issues[1]['uuid'], '4236619ac2073491640f1698b5c4e169895aaf69')
         self.assertEqual(issues[1]['updated_on'], 1458054569.0)
+        self.assertEqual(issues[1]['category'], 'issue')
+        self.assertEqual(issues[1]['tag'], 'https://github.com/zhquan_example/repo')
         self.assertDictEqual(issues[1]['data'], expected_2)
 
     @httpretty.activate
@@ -196,6 +236,8 @@ class TestGitHubBackend(unittest.TestCase):
         self.assertEqual(issues[0]['origin'], 'https://github.com/zhquan_example/repo')
         self.assertEqual(issues[0]['uuid'], '4236619ac2073491640f1698b5c4e169895aaf69')
         self.assertEqual(issues[0]['updated_on'], 1458054569.0)
+        self.assertEqual(issues[0]['category'], 'issue')
+        self.assertEqual(issues[0]['tag'], 'https://github.com/zhquan_example/repo')
         self.assertDictEqual(issues[0]['data'], expected)
 
     @httpretty.activate
@@ -276,7 +318,7 @@ class TestGitHubBackendCache(unittest.TestCase):
         # First, we fetch the bugs from the server, storing them
         # in a cache
         cache = Cache(self.tmp_path)
-        github = GitHub("zhquan_example", "repo", "aaa", None, cache=cache)
+        github = GitHub("zhquan_example", "repo", "aaa", cache=cache)
 
         issues = [issues for issues in github.fetch()]
 
@@ -294,7 +336,7 @@ class TestGitHubBackendCache(unittest.TestCase):
         """Test if there are not any issues returned when the cache is empty"""
 
         cache = Cache(self.tmp_path)
-        github = GitHub("zhquan_example", "repo", "aaa", None, cache=cache)
+        github = GitHub("zhquan_example", "repo", "aaa", cache=cache)
 
         cache_issues = [cache_issues for cache_issues in github.fetch_from_cache()]
 
@@ -303,7 +345,7 @@ class TestGitHubBackendCache(unittest.TestCase):
     def test_fetch_from_non_set_cache(self):
         """Test if a error is raised when the cache was not set"""
 
-        github = GitHub("zhquan_example", "repo", "aaa", None)
+        github = GitHub("zhquan_example", "repo", "aaa")
 
         with self.assertRaises(CacheError):
             _ = [cache_issues for cache_issues in github.fetch_from_cache()]
@@ -609,7 +651,8 @@ class TestGitHubCommand(unittest.TestCase):
         args = ['--owner', 'zhquan_example',
                 '--repository', 'repo',
                 '--sleep-for-rate',
-                '--min-rate-to-sleep', '1']
+                '--min-rate-to-sleep', '1',
+                '--tag', 'test']
 
         cmd = GitHubCommand(*args)
         self.assertIsInstance(cmd.parsed_args, argparse.Namespace)
@@ -617,6 +660,7 @@ class TestGitHubCommand(unittest.TestCase):
         self.assertEqual(cmd.parsed_args.repository, "repo")
         self.assertEqual(cmd.parsed_args.sleep_for_rate, True)
         self.assertEqual(cmd.parsed_args.min_rate_to_sleep, 1)
+        self.assertEqual(cmd.parsed_args.tag, 'test')
 
 
     @httpretty.activate

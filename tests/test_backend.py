@@ -42,16 +42,27 @@ class TestBackend(unittest.TestCase):
     def test_version(self):
         """Test whether the backend version is initialized"""
 
-        self.assertEqual(Backend.version, '0.1')
+        self.assertEqual(Backend.version, '0.4')
 
         b = Backend('test')
-        self.assertEqual(b.version, '0.1')
+        self.assertEqual(b.version, '0.4')
 
     def test_origin(self):
         """Test whether origin value is initialized"""
 
         b = Backend('test')
         self.assertEqual(b.origin, 'test')
+
+    def test_tag(self):
+        """Test whether tag value is initializated"""
+
+        b = Backend('test')
+        self.assertEqual(b.origin, 'test')
+        self.assertEqual(b.tag, 'test')
+
+        b = Backend('test', tag='mytag')
+        self.assertEqual(b.origin, 'test')
+        self.assertEqual(b.tag, 'mytag')
 
     def test_cache_value_error(self):
         """Test whether it raises a error on invalid cache istances"""
@@ -67,7 +78,7 @@ class TestBackendCommand(unittest.TestCase):
         """Test if the arguments are parsed when the class is initialized"""
 
         args = ['-u', 'jsmith', '-p', '1234', '-t', 'abcd',
-                '--from-date', '2015-01-01', '--origin', 'test']
+                '--from-date', '2015-01-01', '--tag', 'test']
 
         cmd = BackendCommand(*args)
 
@@ -76,7 +87,7 @@ class TestBackendCommand(unittest.TestCase):
         self.assertEqual(cmd.parsed_args.backend_password, '1234')
         self.assertEqual(cmd.parsed_args.backend_token, 'abcd')
         self.assertEqual(cmd.parsed_args.from_date, '2015-01-01')
-        self.assertEqual(cmd.parsed_args.origin, 'test')
+        self.assertEqual(cmd.parsed_args.tag, 'test')
 
     def test_argument_parser(self):
         """Test if it returns a argument parser object"""
@@ -88,10 +99,10 @@ class TestBackendCommand(unittest.TestCase):
 class MockDecoratorBackend(Backend):
     """Mock backend to test metadata decorators"""
 
-    version = '0.1.0'
+    version = '0.2.0'
 
-    def __init__(self, origin):
-        super().__init__(origin)
+    def __init__(self, origin, tag=None):
+        super().__init__(origin, tag=tag)
 
     @metadata
     def fetch(self, from_date=None):
@@ -113,12 +124,16 @@ class MockDecoratorBackend(Backend):
     def metadata_updated_on(item):
         return '2016-01-01'
 
+    @staticmethod
+    def metadata_category(item):
+        return 'mock_item'
+
 
 class TestMetadata(unittest.TestCase):
     """Test metadata decorator"""
 
     def test_decorator(self):
-        backend = MockDecoratorBackend('test')
+        backend = MockDecoratorBackend('test', 'mytag')
         before = datetime.datetime.now().timestamp()
         items = [item for item in backend.fetch()]
         after = datetime.datetime.now().timestamp()
@@ -130,11 +145,13 @@ class TestMetadata(unittest.TestCase):
 
             self.assertEqual(item['data']['item'], x)
             self.assertEqual(item['backend_name'], 'MockDecoratorBackend')
-            self.assertEqual(item['backend_version'], '0.1.0')
+            self.assertEqual(item['backend_version'], '0.2.0')
             self.assertEqual(item['perceval_version'], __version__)
             self.assertEqual(item['origin'], 'test')
             self.assertEqual(item['uuid'], expected_uuid)
             self.assertEqual(item['updated_on'], '2016-01-01')
+            self.assertEqual(item['category'], 'mock_item')
+            self.assertEqual(item['tag'], 'mytag')
             self.assertGreater(item['timestamp'], before)
             self.assertLess(item['timestamp'], after)
 

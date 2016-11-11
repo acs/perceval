@@ -122,23 +122,36 @@ class TestBugzillaRESTBackend(unittest.TestCase):
     def test_initialization(self):
         """Test whether attributes are initializated"""
 
-        bg = BugzillaREST(BUGZILLA_SERVER_URL, origin='test',
+        bg = BugzillaREST(BUGZILLA_SERVER_URL, tag='test',
                           max_bugs=5)
 
         self.assertEqual(bg.url, BUGZILLA_SERVER_URL)
-        self.assertEqual(bg.origin, 'test')
+        self.assertEqual(bg.origin, BUGZILLA_SERVER_URL)
+        self.assertEqual(bg.tag, 'test')
         self.assertEqual(bg.max_bugs, 5)
         self.assertIsInstance(bg.client, BugzillaRESTClient)
 
-        # When origin is empty or None it will be set to
-        # the value in url
+        # When tag is empty or None it will be set to
+        # the value in URL
         bg = BugzillaREST(BUGZILLA_SERVER_URL)
         self.assertEqual(bg.url, BUGZILLA_SERVER_URL)
         self.assertEqual(bg.origin, BUGZILLA_SERVER_URL)
+        self.assertEqual(bg.tag, BUGZILLA_SERVER_URL)
 
-        bg = BugzillaREST(BUGZILLA_SERVER_URL, origin='')
+        bg = BugzillaREST(BUGZILLA_SERVER_URL, tag='')
         self.assertEqual(bg.url, BUGZILLA_SERVER_URL)
         self.assertEqual(bg.origin, BUGZILLA_SERVER_URL)
+        self.assertEqual(bg.tag, BUGZILLA_SERVER_URL)
+
+    def test_has_caching(self):
+        """Test if it returns True when has_caching is called"""
+
+        self.assertEqual(BugzillaREST.has_caching(), True)
+
+    def test_has_resuming(self):
+        """Test if it returns True when has_resuming is called"""
+
+        self.assertEqual(BugzillaREST.has_resuming(), True)
 
     @httpretty.activate
     def test_fetch(self):
@@ -158,6 +171,8 @@ class TestBugzillaRESTBackend(unittest.TestCase):
         self.assertEqual(bugs[0]['origin'], BUGZILLA_SERVER_URL)
         self.assertEqual(bugs[0]['uuid'], '68494ad0072ed9e09cecb8235649a38c443326db')
         self.assertEqual(bugs[0]['updated_on'], 1465257689.0)
+        self.assertEqual(bugs[0]['category'], 'bug')
+        self.assertEqual(bugs[0]['tag'], BUGZILLA_SERVER_URL)
 
         self.assertEqual(bugs[1]['data']['id'], 1273439)
         self.assertEqual(len(bugs[1]['data']['comments']), 0)
@@ -166,6 +181,8 @@ class TestBugzillaRESTBackend(unittest.TestCase):
         self.assertEqual(bugs[1]['origin'], BUGZILLA_SERVER_URL)
         self.assertEqual(bugs[1]['uuid'], 'd306162de06bc759f9bd9227fe3fd5f08aeb0dde')
         self.assertEqual(bugs[1]['updated_on'], 1465257715.0)
+        self.assertEqual(bugs[1]['category'], 'bug')
+        self.assertEqual(bugs[1]['tag'], BUGZILLA_SERVER_URL)
 
         self.assertEqual(bugs[2]['data']['id'], 947945)
         self.assertEqual(len(bugs[2]['data']['comments']), 0)
@@ -174,6 +191,8 @@ class TestBugzillaRESTBackend(unittest.TestCase):
         self.assertEqual(bugs[2]['origin'], BUGZILLA_SERVER_URL)
         self.assertEqual(bugs[2]['uuid'], '33edda925351c3310fc3e12d7f18a365c365f6bd')
         self.assertEqual(bugs[2]['updated_on'], 1465257743.0)
+        self.assertEqual(bugs[2]['category'], 'bug')
+        self.assertEqual(bugs[2]['tag'], BUGZILLA_SERVER_URL)
 
         # Check requests
         expected = [{
@@ -276,6 +295,8 @@ class TestBugzillaRESTBackendCache(unittest.TestCase):
         self.assertEqual(bugs[0]['origin'], BUGZILLA_SERVER_URL)
         self.assertEqual(bugs[0]['uuid'], '68494ad0072ed9e09cecb8235649a38c443326db')
         self.assertEqual(bugs[0]['updated_on'], 1465257689.0)
+        self.assertEqual(bugs[0]['category'], 'bug')
+        self.assertEqual(bugs[0]['tag'], BUGZILLA_SERVER_URL)
 
         self.assertEqual(bugs[1]['data']['id'], 1273439)
         self.assertEqual(len(bugs[1]['data']['comments']), 0)
@@ -284,6 +305,8 @@ class TestBugzillaRESTBackendCache(unittest.TestCase):
         self.assertEqual(bugs[1]['origin'], BUGZILLA_SERVER_URL)
         self.assertEqual(bugs[1]['uuid'], 'd306162de06bc759f9bd9227fe3fd5f08aeb0dde')
         self.assertEqual(bugs[1]['updated_on'], 1465257715.0)
+        self.assertEqual(bugs[1]['category'], 'bug')
+        self.assertEqual(bugs[1]['tag'], BUGZILLA_SERVER_URL)
 
         self.assertEqual(bugs[2]['data']['id'], 947945)
         self.assertEqual(len(bugs[2]['data']['comments']), 0)
@@ -292,6 +315,8 @@ class TestBugzillaRESTBackendCache(unittest.TestCase):
         self.assertEqual(bugs[2]['origin'], BUGZILLA_SERVER_URL)
         self.assertEqual(bugs[2]['uuid'], '33edda925351c3310fc3e12d7f18a365c365f6bd')
         self.assertEqual(bugs[2]['updated_on'], 1465257743.0)
+        self.assertEqual(bugs[2]['category'], 'bug')
+        self.assertEqual(bugs[2]['tag'], BUGZILLA_SERVER_URL)
 
         # No more requests were sent
         self.assertEqual(len(http_requests), 9)
@@ -578,7 +603,7 @@ class TestBugzillaRESTCommand(unittest.TestCase):
 
         args = ['--backend-user', 'jsmith@example.com',
                 '--backend-password', '1234',
-                '--max-bugs', '10', '--origin', 'test',
+                '--max-bugs', '10', '--tag', 'test',
                 BUGZILLA_SERVER_URL]
 
         cmd = BugzillaRESTCommand(*args)
@@ -586,7 +611,7 @@ class TestBugzillaRESTCommand(unittest.TestCase):
         self.assertEqual(cmd.parsed_args.backend_user, 'jsmith@example.com')
         self.assertEqual(cmd.parsed_args.backend_password, '1234')
         self.assertEqual(cmd.parsed_args.max_bugs, 10)
-        self.assertEqual(cmd.parsed_args.origin, 'test')
+        self.assertEqual(cmd.parsed_args.tag, 'test')
         self.assertEqual(cmd.parsed_args.url, BUGZILLA_SERVER_URL)
         self.assertIsInstance(cmd.backend, BugzillaREST)
 

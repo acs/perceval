@@ -45,23 +45,22 @@ MOZILLA_REPS_URL = "https://reps.mozilla.org"
 class ReMo(Backend):
     """ReMo backend for Perceval.
 
-    This class retrieves the events from a
-    ReMo url. To initialize this class a
-    url could be provided. If not, https://reps.mozilla.org will be used.
+    This class retrieves the events from a ReMo URL. To initialize
+    this class an URL may be provided. If not, https://reps.mozilla.org
+    will be used. The origin of the data will be set to this URL.
 
-    :param url: ReMo url
+    :param url: ReMo URL
+    :param tag: label used to mark the data
     :param cache: cache object to store raw data
-    :param origin: identifier of the repository; when `None` or an
-        empty string are given, it will be set to `url` value
     """
-    version = '0.1.0'
+    version = '0.4.0'
 
-    def __init__(self, url=None, cache=None, origin=None):
+    def __init__(self, url=None, tag=None, cache=None):
         if not url:
             url = MOZILLA_REPS_URL
-        origin = origin if origin else url
+        origin = url
 
-        super().__init__(origin, cache=cache)
+        super().__init__(origin, tag=tag, cache=cache)
         self.url = url
         self.client = ReMoClient(url)
         self.__users = {}  # internal users cache
@@ -144,9 +143,25 @@ class ReMo(Backend):
                     nevents)
         logger.info("Unknown users: %i", nunknown_users)
 
+    @classmethod
+    def has_caching(cls):
+        """Returns whether it supports caching items on the fetch process.
+
+        :returns: this backend supports items cache
+        """
+        return True
+
+    @classmethod
+    def has_resuming(cls):
+        """Returns whether it supports to resume the fetch process.
+
+        :returns: this backend supports items resuming
+        """
+        return True
+
     @staticmethod
     def metadata_id(item):
-        """Extracts the identifier from an event item."""
+        """Extracts the identifier from a ReMo item."""
         return str(item['event_url'])
 
     @staticmethod
@@ -162,6 +177,15 @@ class ReMo(Backend):
         :returns: a UNIX timestamp
         """
         return float(str_to_datetime(item['end']).timestamp())
+
+    @staticmethod
+    def metadata_category(item):
+        """Extracts the category from a ReMo item.
+
+        This backend only generates one type of item which is
+        'event'.
+        """
+        return 'event'
 
     def __get_all_users(self):
         """Retrieve all users data"""
@@ -270,7 +294,7 @@ class ReMoCommand(BackendCommand):
     def __init__(self, *args):
         super().__init__(*args)
         self.url = self.parsed_args.url
-        self.origin = self.parsed_args.origin
+        self.tag = self.parsed_args.tag
         self.outfile = self.parsed_args.outfile
 
         if not self.parsed_args.no_cache:
@@ -290,7 +314,7 @@ class ReMoCommand(BackendCommand):
         else:
             cache = None
 
-        self.backend = ReMo(self.url, cache=cache, origin=self.origin)
+        self.backend = ReMo(self.url, tag=self.tag, cache=cache)
 
     def run(self):
         """Fetch and print the Events.

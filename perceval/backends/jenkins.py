@@ -41,23 +41,24 @@ logger = logging.getLogger(__name__)
 class Jenkins(Backend):
     """Jenkins backend for Perceval.
 
-    This class retrieves the builds from a
-    Jenkins site. To initialize this class the
-    URL must be provided.
+    This class retrieves the builds from a Jenkins site.
+    To initialize this class the URL must be provided.
+    The `url` will be set as the origin of the data.
 
     :param url: Jenkins url
+    :param tag: label used to mark the data
     :param cache: cache object to store raw data
-    :param origin: identifier of the repository; when `None` or an
-        empty string are given, it will be set to `url` value
+    :param blacklist_jobs: exclude the jobs of this list while fetching
     """
-    version = '0.1.0'
+    version = '0.5.0'
 
-    def __init__(self, url, cache=None, origin=None):
-        origin = origin if origin else url
+    def __init__(self, url, tag=None, cache=None, blacklist_jobs=None):
+        origin = url
 
-        super().__init__(origin, cache=cache)
+        super().__init__(origin, tag=tag, cache=cache)
         self.url = url
-        self.client = JenkinsClient(url)
+        self.client = JenkinsClient(url, blacklist_jobs)
+        self.blacklist_jobs = blacklist_jobs
 
     @metadata
     def fetch(self):
@@ -80,8 +81,10 @@ class Jenkins(Backend):
 
         for job in jobs:
             njobs += 1
-            logger.debug("Adding builds from %s (%i/%i)" % (job['url'], njobs, len(jobs)))
+            logger.debug("Adding builds from %s (%i/%i)", job['url'], njobs, len(jobs))
             raw_builds = self.client.get_builds(job['name'])
+            if not raw_builds:
+                continue
             self._push_cache_queue(raw_builds)
             self._flush_cache_queue()
             builds = json.loads(raw_builds)
@@ -112,6 +115,22 @@ class Jenkins(Backend):
             for build in builds:
                 yield build
 
+    @classmethod
+    def has_caching(cls):
+        """Returns whether it supports caching items on the fetch process.
+
+        :returns: this backend supports items cache
+        """
+        return True
+
+    @classmethod
+    def has_resuming(cls):
+        """Returns whether it supports to resume the fetch process.
+
+        :returns: this backend does not supports items resuming
+        """
+        return False
+
     @staticmethod
     def metadata_id(item):
         """Extracts the identifier from a Build item."""
@@ -131,6 +150,16 @@ class Jenkins(Backend):
         """
         return float(item['timestamp']/1000)
 
+    @staticmethod
+    def metadata_category(item):
+        """Extracts the category from a Jenkins item.
+
+        This backend only generates one type of item which is
+        'build'.
+        """
+        return 'build'
+
+
 class JenkinsClient:
     """Jenkins API client.
 
@@ -142,8 +171,9 @@ class JenkinsClient:
     :raises HTTPError: when an error occurs doing the request
     """
 
-    def __init__(self, url):
+    def __init__(self, url, blacklist_jobs=None):
         self.url = url
+        self.blacklist_jobs = blacklist_jobs
 
     def get_jobs(self):
         """ Retrieve all jobs
@@ -157,6 +187,11 @@ class JenkinsClient:
     def get_builds(self, job_name):
         """ Retrieve all builds from a job
         """
+
+        if self.blacklist_jobs and job_name in self.blacklist_jobs:
+            logging.info("Not getting blacklisted job: %s", job_name)
+            return
+
         # depth=2 to get builds details
         job_url = self.url + "/job/%s/" % (job_name)
         url_jenkins = job_url + "api/json?depth=2"
@@ -171,8 +206,10 @@ class JenkinsCommand(BackendCommand):
     def __init__(self, *args):
         super().__init__(*args)
         self.url = self.parsed_args.url
-        self.origin = self.parsed_args.origin
+        self.tag = self.parsed_args.tag
         self.outfile = self.parsed_args.outfile
+        self.blacklist_jobs = self.parsed_args.blacklist_jobs
+
 
         if not self.parsed_args.no_cache:
             if not self.parsed_args.cache_path:
@@ -191,7 +228,8 @@ class JenkinsCommand(BackendCommand):
         else:
             cache = None
 
-        self.backend = Jenkins(self.url, cache=cache, origin=self.origin)
+        self.backend = Jenkins(self.url, tag=self.tag, cache=cache,
+                               blacklist_jobs=self.blacklist_jobs)
 
     def run(self):
         """Fetch and print the Builds.
@@ -228,9 +266,11 @@ class JenkinsCommand(BackendCommand):
         # Jenkins options
         group = parser.add_argument_group('Jenkins arguments')
 
-        # Required arguments
-        parser.add_argument('url',
-                            help="URL of the Jenkins server")
+        group.add_argument("--blacklist-jobs",  dest="blacklist_jobs",
+                           nargs='*', help="Wrong jobs that must not be retrieved.")
 
+        # Required arguments
+        group.add_argument('url',
+                           help="URL of the Jenkins server")
 
         return parser

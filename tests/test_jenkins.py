@@ -46,7 +46,7 @@ JENKINS_JOB_BUILDS_2 = 'apex-build-master'
 JENKINS_JOB_BUILDS_URL_1 = JENKINS_SERVER_URL + '/job/'+JENKINS_JOB_BUILDS_1+'/api/json?depth=2'
 JENKINS_JOB_BUILDS_URL_2 = JENKINS_SERVER_URL + '/job/'+JENKINS_JOB_BUILDS_2+'/api/json?depth=2'
 
-
+requests_http = []
 
 def read_file(filename, mode='r'):
     with open(filename, mode) as f:
@@ -59,28 +59,36 @@ class TestJenkinsBackend(unittest.TestCase):
     def test_initialization(self):
         """Test whether attributes are initializated"""
 
-        jenkins = Jenkins(JENKINS_SERVER_URL, origin='test')
+        jenkins = Jenkins(JENKINS_SERVER_URL, tag='test')
 
         self.assertEqual(jenkins.url, JENKINS_SERVER_URL)
-        self.assertEqual(jenkins.origin, 'test')
+        self.assertEqual(jenkins.origin, JENKINS_SERVER_URL)
+        self.assertEqual(jenkins.tag, 'test')
         self.assertIsInstance(jenkins.client, JenkinsClient)
 
-        # When origin is empty or None it will be set to
+        # When tag is empty or None it will be set to
         # the value in url
         jenkins = Jenkins(JENKINS_SERVER_URL)
         self.assertEqual(jenkins.url, JENKINS_SERVER_URL)
         self.assertEqual(jenkins.origin, JENKINS_SERVER_URL)
+        self.assertEqual(jenkins.tag, JENKINS_SERVER_URL)
 
-        jenkins = Jenkins(JENKINS_SERVER_URL, origin='')
+        jenkins = Jenkins(JENKINS_SERVER_URL, tag='')
         self.assertEqual(jenkins.url, JENKINS_SERVER_URL)
         self.assertEqual(jenkins.origin, JENKINS_SERVER_URL)
+        self.assertEqual(jenkins.tag, JENKINS_SERVER_URL)
 
-    @httpretty.activate
-    def test_fetch(self):
-        """Test whether a list of builds is returned"""
+    def test_has_caching(self):
+        """Test if it returns True when has_caching is called"""
 
-        requests_http = []
+        self.assertEqual(Jenkins.has_caching(), True)
 
+    def test_has_resuming(self):
+        """Test if it returns False when has_resuming is called"""
+
+        self.assertEqual(Jenkins.has_resuming(), False)
+
+    def __configure_http_server(self):
         bodies_jobs = read_file('data/jenkins_jobs.json', mode='rb')
         bodies_builds_job = read_file('data/jenkins_job_builds.json')
 
@@ -116,6 +124,12 @@ class TestJenkinsBackend(unittest.TestCase):
                                     for _ in range(2)
                                ])
 
+    @httpretty.activate
+    def test_fetch(self):
+        """Test whether a list of builds is returned"""
+
+        self.__configure_http_server()
+
         # Test fetch builds from jobs list
         jenkins = Jenkins(JENKINS_SERVER_URL)
         builds = [build for build in jenkins.fetch()]
@@ -141,6 +155,8 @@ class TestJenkinsBackend(unittest.TestCase):
             self.assertEqual(build['origin'], 'http://example.com/ci')
             self.assertEqual(build['uuid'], expected[x][0])
             self.assertEqual(build['updated_on'], expected[x][1])
+            self.assertEqual(build['category'], 'build')
+            self.assertEqual(build['tag'], 'http://example.com/ci')
 
     @httpretty.activate
     def test_fetch_empty(self):
@@ -155,6 +171,24 @@ class TestJenkinsBackend(unittest.TestCase):
         builds = [build for build in jenkins.fetch()]
 
         self.assertEqual(len(builds), 0)
+
+    @httpretty.activate
+    def test_fetch_blacklist(self):
+        """Test whether jobs in balcklist are not retrieved"""
+
+        blacklist = [JENKINS_JOB_BUILDS_1]
+
+        self.__configure_http_server()
+
+        jenkins = Jenkins(JENKINS_SERVER_URL, blacklist_jobs=blacklist)
+        nrequests = len(requests_http)
+        builds = [build for build in jenkins.fetch()]
+        # No HTTP calls at all must be done for JENKINS_JOB_BUILDS_1
+        # Just the first call for all jobs and a second call for JENKINS_JOB_BUILDS_2
+        self.assertEqual(len(requests_http) - nrequests, 2)
+        # Builds just from JENKINS_JOB_BUILDS_2
+        self.assertEqual(len(builds), 32)
+
 
 class TestJenkinsBackendCache(unittest.TestCase):
     """Jenkins backend tests using a cache"""
@@ -243,12 +277,12 @@ class TestJenkinsCommand(unittest.TestCase):
     def test_parsing_on_init(self):
         """Test if the class is initialized"""
 
-        args = ['--origin', 'test', JENKINS_SERVER_URL]
+        args = ['--tag', 'test', JENKINS_SERVER_URL]
 
         cmd = JenkinsCommand(*args)
         self.assertIsInstance(cmd.parsed_args, argparse.Namespace)
         self.assertEqual(cmd.parsed_args.url, JENKINS_SERVER_URL)
-        self.assertEqual(cmd.parsed_args.origin, 'test')
+        self.assertEqual(cmd.parsed_args.tag, 'test')
         self.assertIsInstance(cmd.backend, Jenkins)
 
     def test_argument_parser(self):

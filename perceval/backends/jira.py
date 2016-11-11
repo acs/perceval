@@ -74,27 +74,26 @@ def filter_custom_fields(fields):
 class Jira(Backend):
     """JIRA backend for Perceval.
 
-    This class retrieves the issues stored in JIRA issue
-    tracking system. To initialize this class the url
-    must be provided.
+    This class retrieves the issues stored in JIRA issue tracking
+    system. To initialize this class the URL must be provided.
+    The `url` will be set as the origin of the data.
 
     :param url: JIRA's endpoint
     :param project: filter issues by project
     :param verify: allows to disable SSL verification
     :param cert: SSL certificate path (PEM)
+    :param tag: label used to mark the data
     :param cache: cache object to store raw data
-    :param origin: identifier of the repository; when `None` or an
-        empty string are given, it will be set to `url`
     """
-    version = '0.3.0'
+    version = '0.6.1'
 
     def __init__(self, url, project=None, backend_user=None,
                  backend_password=None, verify=None,
                  cert=None, max_issues=None,
-                 cache=None, origin=None):
-        origin = origin if origin else url
+                 tag=None, cache=None):
+        origin = url
 
-        super().__init__(origin, cache=cache)
+        super().__init__(origin, tag=tag, cache=cache)
         self.url = url
         self.project = project
         self.backend_user = backend_user
@@ -160,6 +159,22 @@ class Jira(Backend):
             for issue in issues:
                 yield issue
 
+    @classmethod
+    def has_caching(cls):
+        """Returns whether it supports caching items on the fetch process.
+
+        :returns: this backend supports items cache
+        """
+        return True
+
+    @classmethod
+    def has_resuming(cls):
+        """Returns whether it supports to resume the fetch process.
+
+        :returns: this backend supports items resuming
+        """
+        return True
+
     @staticmethod
     def metadata_id(item):
         """Extracts the identifier from a Jira item."""
@@ -168,7 +183,7 @@ class Jira(Backend):
 
     @staticmethod
     def metadata_updated_on(item):
-        """Extracts the update time from a issue item.
+        """Extracts the update time from a Jira item.
 
         The timestamp used is extracted from 'updated' field.
         This date is converted to UNIX timestamp format taking
@@ -182,6 +197,15 @@ class Jira(Backend):
         ts = str_to_datetime(ts)
 
         return ts.timestamp()
+
+    @staticmethod
+    def metadata_category(item):
+        """Extracts the category from a Jira item.
+
+        This backend only generates one type of item which is
+        'issue'.
+        """
+        return 'issue'
 
     @staticmethod
     def parse_issues(raw_page):
@@ -236,18 +260,24 @@ class JiraClient:
         return base_api_url
 
     def __build_jql_query(self, from_date):
-        AND_OP = ' AND '
-        UPDATED_OP = ' updated > '
-        PROJECT_OP = ' project = '
+        AND_OP = 'AND'
+        UPDATED_OP = 'updated >'
+        PROJECT_OP = 'project ='
+        ORDER_BY_OP = 'order by'
+        ASC_OP = 'asc'
 
         # Convert datetime to milliseconds since 1970-01-01.
         # This allows us to use the timezone of the given date
         strdate = str(int(from_date.timestamp() * 1000))
 
         if self.project:
-            jql_query = PROJECT_OP + self.project + AND_OP + UPDATED_OP + strdate
+            jql_query = ' '.join([PROJECT_OP, self.project, AND_OP,
+                                  UPDATED_OP, strdate])
         else:
-            jql_query = UPDATED_OP + strdate
+            jql_query = ' '.join([UPDATED_OP, strdate])
+
+        jql_query += ' '.join(['', ORDER_BY_OP, 'updated', ASC_OP])
+
         return jql_query
 
     def __build_payload(self, start_at, from_date):
@@ -337,7 +367,7 @@ class JiraCommand(BackendCommand):
         self.backend_user = self.parsed_args.backend_user
         self.backend_password = self.parsed_args.backend_password
         self.from_date = str_to_datetime(self.parsed_args.from_date)
-        self.origin = self.parsed_args.origin
+        self.tag = self.parsed_args.tag
         self.outfile = self.parsed_args.outfile
 
         if not self.parsed_args.no_cache:
@@ -360,7 +390,7 @@ class JiraCommand(BackendCommand):
         self.backend = Jira(self.url, self.project,
                             self.backend_user, self.backend_password,
                             self.verify, self.cert, self.max_issues,
-                            cache=cache, origin=self.origin)
+                            tag=self.tag, cache=cache)
 
     def run(self):
         """Fetch and print the issues.

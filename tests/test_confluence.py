@@ -125,21 +125,34 @@ class TestConfluenceBackend(unittest.TestCase):
     def test_initialization(self):
         """Test whether attributes are initializated"""
 
-        confluence = Confluence(CONFLUENCE_URL, origin='test')
+        confluence = Confluence(CONFLUENCE_URL, tag='test')
 
         self.assertEqual(confluence.url, CONFLUENCE_URL)
-        self.assertEqual(confluence.origin, 'test')
+        self.assertEqual(confluence.origin, CONFLUENCE_URL)
+        self.assertEqual(confluence.tag, 'test')
         self.assertIsInstance(confluence.client, ConfluenceClient)
 
-        # When origin is empty or None it will be set to
+        # When tag is empty or None it will be set to
         # the value in url
         confluence = Confluence(CONFLUENCE_URL)
         self.assertEqual(confluence.url, CONFLUENCE_URL)
-        self.assertEqual(confluence.url, CONFLUENCE_URL)
+        self.assertEqual(confluence.origin, CONFLUENCE_URL)
+        self.assertEqual(confluence.tag, CONFLUENCE_URL)
 
-        confluence = Confluence(CONFLUENCE_URL, origin='')
+        confluence = Confluence(CONFLUENCE_URL, tag='')
         self.assertEqual(confluence.url, CONFLUENCE_URL)
-        self.assertEqual(confluence.url, CONFLUENCE_URL)
+        self.assertEqual(confluence.origin, CONFLUENCE_URL)
+        self.assertEqual(confluence.tag, CONFLUENCE_URL)
+
+    def test_has_caching(self):
+        """Test if it returns True when has_caching is called"""
+
+        self.assertEqual(Confluence.has_caching(), True)
+
+    def test_has_resuming(self):
+        """Test if it returns True when has_resuming is called"""
+
+        self.assertEqual(Confluence.has_resuming(), True)
 
     @httpretty.activate
     def test_fetch(self):
@@ -162,7 +175,10 @@ class TestConfluenceBackend(unittest.TestCase):
             self.assertEqual(hc['data']['id'], expected[x][0])
             self.assertEqual(hc['data']['version']['number'], expected[x][1])
             self.assertEqual(hc['uuid'], expected[x][2])
+            self.assertEqual(hc['origin'], CONFLUENCE_URL)
             self.assertEqual(hc['updated_on'], expected[x][3])
+            self.assertEqual(hc['category'], 'historical content')
+            self.assertEqual(hc['tag'], CONFLUENCE_URL)
 
         # Check requests
         expected = [
@@ -227,7 +243,10 @@ class TestConfluenceBackend(unittest.TestCase):
             self.assertEqual(hc['data']['id'], expected[x][0])
             self.assertEqual(hc['data']['version']['number'], expected[x][1])
             self.assertEqual(hc['uuid'], expected[x][2])
+            self.assertEqual(hc['origin'], CONFLUENCE_URL)
             self.assertEqual(hc['updated_on'], expected[x][3])
+            self.assertEqual(hc['category'], 'historical content')
+            self.assertEqual(hc['tag'], CONFLUENCE_URL)
 
         # Check requests
         expected = [
@@ -291,7 +310,10 @@ class TestConfluenceBackend(unittest.TestCase):
             self.assertEqual(hc['data']['id'], expected[x][0])
             self.assertEqual(hc['data']['version']['number'], expected[x][1])
             self.assertEqual(hc['uuid'], expected[x][2])
+            self.assertEqual(hc['origin'], CONFLUENCE_URL)
             self.assertEqual(hc['updated_on'], expected[x][3])
+            self.assertEqual(hc['category'], 'historical content')
+            self.assertEqual(hc['tag'], CONFLUENCE_URL)
 
         # Check requests
         expected = [
@@ -416,7 +438,10 @@ class TestConfluenceBackendCache(unittest.TestCase):
             self.assertEqual(hc['data']['id'], expected[x][0])
             self.assertEqual(hc['data']['version']['number'], expected[x][1])
             self.assertEqual(hc['uuid'], expected[x][2])
+            self.assertEqual(hc['origin'], CONFLUENCE_URL)
             self.assertEqual(hc['updated_on'], expected[x][3])
+            self.assertEqual(hc['category'], 'historical content')
+            self.assertEqual(hc['tag'], CONFLUENCE_URL)
 
         # No more requests were sent
         self.assertEqual(len(http_requests), 6)
@@ -445,12 +470,12 @@ class TestConfluenceCommand(unittest.TestCase):
         """Test if the class is initialized"""
 
         args = ['http://example.com',
-                '--origin', 'test']
+                '--tag', 'test']
 
         cmd = ConfluenceCommand(*args)
         self.assertIsInstance(cmd.parsed_args, argparse.Namespace)
         self.assertEqual(cmd.parsed_args.url, 'http://example.com')
-        self.assertEqual(cmd.parsed_args.origin, 'test')
+        self.assertEqual(cmd.parsed_args.tag, 'test')
         self.assertIsInstance(cmd.backend, Confluence)
 
     def test_argument_parser(self):

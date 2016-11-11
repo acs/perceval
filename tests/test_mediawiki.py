@@ -123,6 +123,8 @@ class HTTPServer():
         testObj.assertEqual(pages[0]['origin'], MEDIAWIKI_SERVER_URL)
         testObj.assertEqual(pages[0]['uuid'], '528aa927f40d8e46a1e9f456fa318bf9f8a38105')
         testObj.assertEqual(pages[0]['updated_on'], 1466557537.0)
+        testObj.assertEqual(pages[0]['category'], 'page')
+        testObj.assertEqual(pages[0]['tag'], MEDIAWIKI_SERVER_URL)
 
         if len(pages) > 1:
             testObj.assertEqual(pages[1]['data']['pageid'], 476583)
@@ -130,6 +132,8 @@ class HTTPServer():
             testObj.assertEqual(pages[1]['origin'], MEDIAWIKI_SERVER_URL)
             testObj.assertEqual(pages[1]['uuid'], 'c627c598b1eb2a0fe8d6aef9af9968ad54038c7b')
             testObj.assertEqual(pages[1]['updated_on'], 1466616473.0)
+            testObj.assertEqual(pages[1]['category'], 'page')
+            testObj.assertEqual(pages[1]['tag'], MEDIAWIKI_SERVER_URL)
 
 
 class TestMediaWikiBackend(unittest.TestCase):
@@ -138,21 +142,34 @@ class TestMediaWikiBackend(unittest.TestCase):
     def test_initialization(self):
         """Test whether attributes are initializated"""
 
-        mediawiki = MediaWiki(MEDIAWIKI_SERVER_URL, origin='test')
+        mediawiki = MediaWiki(MEDIAWIKI_SERVER_URL, tag='test')
 
         self.assertEqual(mediawiki.url, MEDIAWIKI_SERVER_URL)
-        self.assertEqual(mediawiki.origin, 'test')
+        self.assertEqual(mediawiki.origin, MEDIAWIKI_SERVER_URL)
+        self.assertEqual(mediawiki.tag, 'test')
         self.assertIsInstance(mediawiki.client, MediaWikiClient)
 
-        # When origin is empty or None it will be set to
+        # When tag is empty or None it will be set to
         # the value in url
         mediawiki = MediaWiki(MEDIAWIKI_SERVER_URL)
         self.assertEqual(mediawiki.url, MEDIAWIKI_SERVER_URL)
         self.assertEqual(mediawiki.origin, MEDIAWIKI_SERVER_URL)
+        self.assertEqual(mediawiki.tag, MEDIAWIKI_SERVER_URL)
 
-        mediawiki = MediaWiki(MEDIAWIKI_SERVER_URL, origin='')
+        mediawiki = MediaWiki(MEDIAWIKI_SERVER_URL, tag='')
         self.assertEqual(mediawiki.url, MEDIAWIKI_SERVER_URL)
         self.assertEqual(mediawiki.origin, MEDIAWIKI_SERVER_URL)
+        self.assertEqual(mediawiki.tag, MEDIAWIKI_SERVER_URL)
+
+    def test_has_caching(self):
+        """Test if it returns True when has_caching is called"""
+
+        self.assertEqual(MediaWiki.has_caching(), True)
+
+    def test_has_resuming(self):
+        """Test if it returns False when has_resuming is called"""
+
+        self.assertEqual(MediaWiki.has_resuming(), False)
 
     @httpretty.activate
     def _test_fetch_version(self, version, from_date=None, reviews_api=False):
@@ -263,7 +280,6 @@ class TestMediaWikiBackendCache(unittest.TestCase):
         # No new requests to the server
         self.assertEqual(len(HTTPServer.requests_http), requests_done)
         self.assertEqual(len(cached_pages), len(pages))
-
 
         if version == "1.28" and reviews_api:
             # 2 pages in all name spaces
@@ -507,12 +523,12 @@ class TestMediaWikiCommand(unittest.TestCase):
     def test_parsing_on_init(self):
         """Test if the class is initialized"""
 
-        args = ['--origin', 'test', MEDIAWIKI_SERVER_URL]
+        args = ['--tag', 'test', MEDIAWIKI_SERVER_URL]
 
         cmd = MediaWikiCommand(*args)
         self.assertIsInstance(cmd.parsed_args, argparse.Namespace)
         self.assertEqual(cmd.parsed_args.url, MEDIAWIKI_SERVER_URL)
-        self.assertEqual(cmd.parsed_args.origin, 'test')
+        self.assertEqual(cmd.parsed_args.tag, 'test')
         self.assertIsInstance(cmd.backend, MediaWiki)
 
     def test_argument_parser(self):

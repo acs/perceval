@@ -51,24 +51,24 @@ class MBox(Backend):
 
     This class allows the fetch the email messages stored one or several
     mbox files. Initialize this class passing the directory path where
-    the mbox files are stored.
+    the mbox files are stored. The origin of the data will be set to to
+    the value of `uri`.
 
     :param uri: URI of the mboxes; typically, the URL of their
         mailing list
     :param dirpath: directory path where the mboxes are stored
+    :param tag: label used to mark the data
     :param cache: cache object to store raw data
-    :param origin: identifier of the repository; when `None` or an
-        empty string are given, it will be set to `uri`
     """
-    version = '0.4.0'
+    version = '0.7.0'
 
     DATE_FIELD = 'Date'
     MESSAGE_ID_FIELD = 'Message-ID'
 
-    def __init__(self, uri, dirpath, cache=None, origin=None):
-        origin = origin if origin else uri
+    def __init__(self, uri, dirpath, tag=None, cache=None):
+        origin = uri
 
-        super().__init__(origin, cache=cache)
+        super().__init__(origin, tag=tag, cache=cache)
         self.uri = uri
         self.dirpath = dirpath
 
@@ -193,15 +193,31 @@ class MBox(Backend):
 
         return msg
 
+    @classmethod
+    def has_caching(cls):
+        """Returns whether it supports caching items on the fetch process.
+
+        :returns: this backend does not support items cache
+        """
+        return False
+
+    @classmethod
+    def has_resuming(cls):
+        """Returns whether it supports to resume the fetch process.
+
+        :returns: this backend supports items resuming
+        """
+        return True
+
     @staticmethod
     def metadata_id(item):
-        """Extracts the identifier from a Git item."""
+        """Extracts the identifier from a MBox item."""
 
         return item[MBox.MESSAGE_ID_FIELD]
 
     @staticmethod
     def metadata_updated_on(item):
-        """Extracts the update time from a message item.
+        """Extracts the update time from a MBox item.
 
         The timestamp used is extracted from 'Date' field in its
         several forms. This date is converted to UNIX timestamp
@@ -215,6 +231,15 @@ class MBox(Backend):
         ts = str_to_datetime(ts)
 
         return ts.timestamp()
+
+    @staticmethod
+    def metadata_category(item):
+        """Extracts the category from a MBox item.
+
+        This backend only generates one type of item which is
+        'message'.
+        """
+        return 'message'
 
     @staticmethod
     def parse_mbox(filepath):
@@ -302,13 +327,13 @@ class MBoxCommand(BackendCommand):
         self.uri = self.parsed_args.uri
         self.mboxes = self.parsed_args.mboxes
         self.outfile = self.parsed_args.outfile
-        self.origin = self.parsed_args.origin
+        self.tag = self.parsed_args.tag
         self.from_date = str_to_datetime(self.parsed_args.from_date)
 
         cache = None
 
         self.backend = MBox(self.uri, self.mboxes,
-                            cache=cache, origin=self.origin)
+                            tag=self.tag, cache=cache)
 
     def run(self):
         """Fetch and print the email messages.

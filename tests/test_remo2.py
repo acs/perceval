@@ -23,6 +23,7 @@
 #
 
 import argparse
+import re
 import shutil
 import sys
 import tempfile
@@ -35,13 +36,14 @@ if not '..' in sys.path:
 
 from perceval.cache import Cache
 from perceval.errors import CacheError
-from perceval.backends.remo import ReMo, ReMoCommand, ReMoClient, MOZILLA_REPS_URL
+from perceval.backends.remo2 import (
+    ReMo, ReMoCommand, ReMoClient, MOZILLA_REPS_URL, REMO_DEFAULT_OFFSET)
 
 
 MOZILLA_REPS_SERVER_URL = 'http://example.com'
-MOZILLA_REPS_API = MOZILLA_REPS_SERVER_URL + '/api/v1/'
-MOZILLA_REPS_API_EVENTS = MOZILLA_REPS_SERVER_URL + '/api/v1/event/'
-MOZILLA_REPS_API_USERS = MOZILLA_REPS_SERVER_URL + '/api/v1/rep/'
+MOZILLA_REPS_API = MOZILLA_REPS_SERVER_URL + '/api/remo/v1'
+
+MOZILLA_REPS_CATEGORIES = ['events', 'activities', 'users']
 
 def read_file(filename, mode='r'):
     with open(filename, mode) as f:
@@ -57,33 +59,41 @@ class HTTPServer():
     def routes(cls, empty=False):
         """Configure in http the routes to be served"""
 
-        mozilla_events_1 = read_file('data/remo_events_1_2.json')
-        mozilla_events_2 = read_file('data/remo_events_2_2.json')
-        mozilla_reps = read_file('data/remo_reps.json')
+        mozilla_bodies = {}  # dict with all the bodies to be returned by category
+        for category in MOZILLA_REPS_CATEGORIES:
+            mozilla_bodies[category] = {}
+            # First two pages for each category to test pagination
+            mozilla_bodies[category]['1'] = read_file('data/remo_'+category+'_page_1_2.json')
+            mozilla_bodies[category]['2'] = read_file('data/remo_'+category+'_page_2_2.json')
+            # A sample item per each category
+            mozilla_bodies[category]['item'] = read_file('data/remo_'+category+'.json')
+
         if empty:
-            mozilla_events_1 = read_file('data/remo_events_empty.json')
+            for category in MOZILLA_REPS_CATEGORIES:
+                mozilla_bodies[category]['1'] = read_file('data/remo_'+category+'_page_empty.json')
 
         def request_callback(method, uri, headers):
-            if 'rep/?' in uri:
-                body = mozilla_reps
+            body = ''
+            if 'page' in uri:
+                # Page with item list query
+                page = uri.split("page=")[1].split("&")[0]
+                for category in MOZILLA_REPS_CATEGORIES:
+                    if category in uri:
+                        body = mozilla_bodies[category][page]
+                        break
             else:
-                offset = uri.split("offset=")[1].split("&")[0]
-                if offset == "0":
-                    body = mozilla_events_1
-                else:
-                    body = mozilla_events_2
+                # Specific item. Always return the same for each category.
+                for category in MOZILLA_REPS_CATEGORIES:
+                    if category in uri:
+                        body = mozilla_bodies[category]['item']
+                        break
 
             HTTPServer.requests_http.append(httpretty.last_request())
 
             return (200, headers, body)
 
         httpretty.register_uri(httpretty.GET,
-                               MOZILLA_REPS_API_EVENTS,
-                               responses=[
-                                    httpretty.Response(body=request_callback)
-                               ])
-        httpretty.register_uri(httpretty.GET,
-                               MOZILLA_REPS_API_USERS,
+                               re.compile(MOZILLA_REPS_API+".*"),
                                responses=[
                                     httpretty.Response(body=request_callback)
                                ])
@@ -130,56 +140,111 @@ class TestReMoBackend(unittest.TestCase):
 
         self.assertEqual(ReMo.has_resuming(), True)
 
-    def __check_events_contents(self, events):
-        self.assertEqual(events[0]['data']['estimated_attendance'], 1000)
-        self.assertEqual(events[0]['data']['local_start'], '2012-06-06T10:00:00')
-        self.assertEqual(events[0]['data']['start'], '2012-06-06T02:00:00')
-        self.assertEqual(events[0]['origin'], MOZILLA_REPS_SERVER_URL)
-        self.assertEqual(events[0]['uuid'], 'e701d4ed3b954361383d678d2168a44307d7ff60')
-        self.assertEqual(events[0]['updated_on'], 1339326000.0)
-        self.assertEqual(events[0]['category'], 'event')
-        self.assertEqual(events[0]['tag'], MOZILLA_REPS_SERVER_URL)
+    def __check_events_contents(self, items):
+        self.assertEqual(items[0]['data']['city'], 'Makassar')
+        self.assertEqual(items[0]['data']['end'], '2012-06-10T11:00:00Z')
+        self.assertEqual(items[0]['origin'], MOZILLA_REPS_SERVER_URL)
+        self.assertEqual(items[0]['uuid'], 'e701d4ed3b954361383d678d2168a44307d7ff60')
+        self.assertEqual(items[0]['updated_on'], 1339326000.0)
+        self.assertEqual(items[0]['category'], 'event')
+        self.assertEqual(items[0]['tag'], MOZILLA_REPS_SERVER_URL)
 
-        if len(events) > 1:
-            self.assertEqual(events[1]['data']['estimated_attendance'], 50)
-            self.assertEqual(events[1]['data']['local_start'], '2012-06-09T09:00:00')
-            self.assertEqual(events[1]['data']['start'], '2012-06-09T07:00:00')
-            self.assertEqual(events[1]['origin'], MOZILLA_REPS_SERVER_URL)
-            self.assertEqual(events[1]['uuid'], 'e83e53b1f1039f62c66d2a977e23df3adf5bdc87')
-            self.assertEqual(events[1]['updated_on'], 1339344000.0)
-            self.assertEqual(events[1]['category'], 'event')
-            self.assertEqual(events[1]['tag'], MOZILLA_REPS_SERVER_URL)
+    def __check_activities_contents(self, items):
+        self.assertEqual(items[0]['data']['location'], 'Bhopal, Madhya Pradesh, India')
+        self.assertEqual(items[0]['data']['report_date'], '2016-11-05')
+        self.assertEqual(items[0]['origin'], MOZILLA_REPS_SERVER_URL)
+        self.assertEqual(items[0]['uuid'], '9e2b0c2c8ec8094d2c53a2621bd09f9d6f65e67f')
+        self.assertEqual(items[0]['updated_on'], 1478304000.0)
+        self.assertEqual(items[0]['category'], 'activity')
+        self.assertEqual(items[0]['tag'], MOZILLA_REPS_SERVER_URL)
+
+    def __check_users_contents(self, items):
+        self.assertEqual(items[0]['data']['city'], 'Makati City')
+        self.assertEqual(items[0]['data']['date_joined_program'], '2011-06-01')
+        self.assertEqual(items[0]['origin'], MOZILLA_REPS_SERVER_URL)
+        self.assertEqual(items[0]['uuid'], '90b0f5bc90ed8a694261df418a2b85beed94535a')
+        self.assertEqual(items[0]['updated_on'], 1306886400.0)
+        self.assertEqual(items[0]['category'], 'user')
+        self.assertEqual(items[0]['tag'], MOZILLA_REPS_SERVER_URL)
 
     @httpretty.activate
-    def test_fetch(self):
+    def __test_fetch(self, category='events'):
         """Test whether the events are returned"""
 
+        items_page = ReMoClient.ITEMS_PER_PAGE
+        pages = 2  # two pages of testing data
+
         HTTPServer.routes()
+        prev_requests_http = len(HTTPServer.requests_http)
 
         # Test fetch events with their reviews
         remo = ReMo(MOZILLA_REPS_SERVER_URL)
 
-        events = [page for page in remo.fetch()]
+        items = [page for page in remo.fetch(category=category)]
 
-        self.assertEqual(len(events), 4)
+        self.assertEqual(len(items), items_page * pages)
 
-        self.__check_events_contents(events)
+        if category == 'events':
+            self.__check_events_contents(items)
+        elif category == 'users':
+            self.__check_users_contents(items)
+        elif category == 'activities':
+            self.__check_activities_contents(items)
 
-        # Check requests: first get all users, then the events
-        expected = [{'limit':['400']},
-                    {'limit':['40'], 'offset':['0']},
-                    {'limit':['40'], 'offset':['2']}
-                    ]
+        # Check requests: page list, items, page list, items
+        expected = [{'page':['1']}]
+        for i in range(0, items_page):
+            expected += [{}]
+        expected += [{'page':['2']}]
+        for i in range(0, items_page):
+            expected += [{}]
 
-        self.assertEqual(len(HTTPServer.requests_http), len(expected))
+        self.assertEqual(len(HTTPServer.requests_http)-prev_requests_http, len(expected))
 
         for i in range(len(expected)):
             self.assertDictEqual(HTTPServer.requests_http[i].querystring, expected[i])
 
+    def test_fetch_events(self):
+        self.__test_fetch(category='events')
+
+    def test_fetch_activities(self):
+        self.__test_fetch(category='activities')
+
+    def test_fetch_users(self):
+        self.__test_fetch(category='users')
+
+    @httpretty.activate
+    def test_fetch_offset(self):
+        items_page = ReMoClient.ITEMS_PER_PAGE
+        pages = 2  # two pages of testing data
+        offset = 15
+
+        HTTPServer.routes()
+        prev_requests_http = len(HTTPServer.requests_http)
+
+        # Test fetch events with their reviews
+        remo = ReMo(MOZILLA_REPS_SERVER_URL)
+
+        # Test we get the correct number of items from an offset
+        items = [page for page in remo.fetch(offset=15)]
+        self.assertEqual(len(items), (items_page * pages) - offset)
+
+        # Test that the same offset (17) is the same item
+        items = [page for page in remo.fetch(offset=5)]
+        uuid_17_1 = items[12]['uuid']
+        self.assertEqual(items[12]['offset'], 17)
+        items = [page for page in remo.fetch(offset=12)]
+        uuid_17_2 = items[5]['uuid']
+        self.assertEqual(items[5]['offset'], 17)
+        self.assertEqual(uuid_17_1, uuid_17_2)
+
+    def test_fetch_wrong_category(self):
+        with self.assertRaises(ValueError):
+            self.__test_fetch(category='wrong')
 
     @httpretty.activate
     def test_fetch_empty(self):
-        """Test whether it works when no jobs are fetched"""
+        """Test whether it works when no items are fetched"""
 
         HTTPServer.routes(empty=True)
 
@@ -199,7 +264,7 @@ class TestReMoBackendCache(unittest.TestCase):
         shutil.rmtree(self.tmp_path)
 
     @httpretty.activate
-    def test_fetch_from_cache(self):
+    def __test_fetch_from_cache(self, category):
         """Test whether the cache works"""
 
         HTTPServer.routes()
@@ -209,20 +274,29 @@ class TestReMoBackendCache(unittest.TestCase):
         cache = Cache(self.tmp_path)
         remo = ReMo(MOZILLA_REPS_SERVER_URL, cache=cache)
 
-        events = [event for event in remo.fetch()]
+        items = [item for item in remo.fetch(category=category)]
 
         requests_done = len(HTTPServer.requests_http)
 
-        # Now, we get the events from the cache.
+        # Now, we get the items from the cache.
         # The contents should be the same and there won't be
         # any new request to the server
-        cached_events = [event for event in remo.fetch_from_cache()]
+        cached_items = [item for item in remo.fetch_from_cache()]
         # No new requests to the server
         self.assertEqual(len(HTTPServer.requests_http), requests_done)
         # The contents should be the same
-        self.assertEqual(len(cached_events), len(events))
-        for i in range(0,len(events)):
-            self.assertDictEqual(cached_events[i]['data'], events[i]['data'])
+        self.assertEqual(len(cached_items), len(items))
+        for i in range(0,len(items)):
+            self.assertDictEqual(cached_items[i]['data'], items[i]['data'])
+
+    def test_fetch_from_cache_events(self):
+        self.__test_fetch_from_cache('events')
+
+    def test_fetch_from_cache_users(self):
+        self.__test_fetch_from_cache('users')
+
+    def test_fetch_from_cache_activitites(self):
+        self.__test_fetch_from_cache('activities')
 
     def test_fetch_from_empty_cache(self):
         """Test if there are not any events returned when the cache is empty"""
@@ -247,13 +321,21 @@ class TestReMoCommand(unittest.TestCase):
     def test_parsing_on_init(self):
         """Test if the class is initialized"""
 
-        args = ['--tag', 'test', MOZILLA_REPS_SERVER_URL]
+        args = ['--tag', 'test', '--category', 'users', MOZILLA_REPS_SERVER_URL]
 
         cmd = ReMoCommand(*args)
         self.assertIsInstance(cmd.parsed_args, argparse.Namespace)
         self.assertEqual(cmd.parsed_args.url, MOZILLA_REPS_SERVER_URL)
         self.assertEqual(cmd.parsed_args.tag, 'test')
+        self.assertEqual(cmd.parsed_args.category, 'users')
+        self.assertEqual(cmd.parsed_args.offset, REMO_DEFAULT_OFFSET)
         self.assertIsInstance(cmd.backend, ReMo)
+
+        args = ['--tag', 'test', MOZILLA_REPS_SERVER_URL]
+
+        cmd = ReMoCommand(*args)
+        # Default category is events
+        self.assertEqual(cmd.parsed_args.category, 'events')
 
     def test_argument_parser(self):
         """Test if it returns a argument parser object"""
@@ -276,43 +358,42 @@ class TestReMoClient(unittest.TestCase):
         client = ReMoClient(MOZILLA_REPS_SERVER_URL)
 
     @httpretty.activate
-    def test_get_events(self):
+    def test_get_items(self):
         """Test get_events API call"""
 
         HTTPServer.routes()
 
         # Set up a mock HTTP server
-        body = read_file('data/remo_events_1_2.json')
+        body = read_file('data/remo_events_page_1_2.json')
         client = ReMoClient(MOZILLA_REPS_SERVER_URL)
-        response = next(client.get_events())
+        response = next(client.get_items())
         req = HTTPServer.requests_http[-1]
         self.assertEqual(response, body)
         self.assertEqual(req.method, 'GET')
-        self.assertRegex(req.path, '/api/v1/event/')
+        self.assertEqual(req.path, '/api/remo/v1/events/?page=1')
         # Check request params
         expected = {
-                    'limit' : ['40'],
-                    'offset' : ['0']
+                    'page' : ['1']
                     }
         self.assertDictEqual(req.querystring, expected)
 
     @httpretty.activate
-    def test_get_all_users(self):
+    def test_call(self):
         """Test get_all_users API call"""
 
         HTTPServer.routes()
 
         # Set up a mock HTTP server
-        body = read_file('data/remo_reps.json')
+        body = read_file('data/remo_events_page_1_2.json')
         client = ReMoClient(MOZILLA_REPS_SERVER_URL)
-        response = client.get_all_users()
+        response = client.call(MOZILLA_REPS_API+'/events/?page=1')
         req = HTTPServer.requests_http[-1]
         self.assertEqual(response, body)
         self.assertEqual(req.method, 'GET')
-        self.assertRegex(req.path, '/api/v1/rep/')
+        self.assertEqual(req.path, '/api/remo/v1/events/?page=1')
         # Check request params
         expected = {
-                    'limit' : ['400']
+                    'page' : ['1']
                     }
         self.assertDictEqual(req.querystring, expected)
 

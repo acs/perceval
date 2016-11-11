@@ -60,24 +60,24 @@ class Kitsune(Backend):
     """Kitsune backend for Perceval.
 
     This class retrieves the questions and answers from a
-    Kitsune url. To initialize this class a
-    url could be provided. If not, https://support.mozilla.org will be used.
+    Kitsune URL. To initialize this class a URL may be provided.
+    If not, https://support.mozilla.org will be used. The origin
+    of the data will be set to this URL.
 
     Questions and answers are returned from older to newer.
 
-    :param url: Kitsune url
+    :param url: Kitsune URL
+    :param tag: label used to mark the data
     :param cache: cache object to store raw data
-    :param origin: identifier of the repository; when `None` or an
-        empty string are given, it will be set to `url` value
     """
-    version = '0.1.0'
+    version = '0.4.0'
 
-    def __init__(self, url=None, cache=None, origin=None):
+    def __init__(self, url=None, tag=None, cache=None):
         if not url:
             url = KITSUNE_URL
-        origin = origin if origin else url
+        origin = url
 
-        super().__init__(origin, cache=cache)
+        super().__init__(origin, tag=tag, cache=cache)
         self.url = url
         self.client = KitsuneClient(url)
 
@@ -98,6 +98,7 @@ class Kitsune(Backend):
 
         nquestions = 0  # number of questions processed
         tquestions = 0  # number of questions from API data
+        equestions = 0  # number of questions dropped by errors
 
         # Always get complete pages so the first item is always
         # the first one in the page
@@ -107,8 +108,30 @@ class Kitsune(Backend):
         drop_questions = offset - page_offset
         current_offset = offset
 
-        for raw_questions in self.client.get_questions(offset):
+        questions_page = self.client.get_questions(offset)
+
+        while True:
+            try:
+                raw_questions = next(questions_page)
+            except StopIteration:
+                break
+            except requests.exceptions.HTTPError as e:
+                # Continue with the next page if it is a 500 error
+                if e.response.status_code == 500:
+                    logger.exception(e)
+                    logger.error("Problem getting Kitsune questions. " +
+                                 "Loosing %i questions. Going to the next page.",
+                                 KitsuneClient.ITEMS_PER_PAGE)
+                    equestions += KitsuneClient.ITEMS_PER_PAGE
+                    current_offset += KitsuneClient.ITEMS_PER_PAGE
+                    questions_page = self.client.get_questions(current_offset)
+                    continue
+                else:
+                    # If it is another error just propagate the exception
+                    raise e
+
             self._push_cache_queue(raw_questions)
+
             try:
                 questions_data = json.loads(raw_questions)
                 tquestions = questions_data['count']
@@ -134,11 +157,13 @@ class Kitsune(Backend):
                 nquestions += 1
                 self._push_cache_queue('{}') # Mark with empty dict end of question
 
-            logger.debug("Questions: %i/%i", nquestions, tquestions)
+            logger.debug("Questions: %i/%i", nquestions + offset, tquestions)
 
             self._flush_cache_queue()
 
         logger.info("Total number of questions: %i (%i total)", nquestions, tquestions)
+        logger.info("Questions with errors dropped: %i", equestions)
+
 
     @kitsune_metadata
     @metadata
@@ -209,9 +234,25 @@ class Kitsune(Backend):
         logger.info("Retrieval process completed: %s questions retrieved from cache",
                     nquestions)
 
+    @classmethod
+    def has_caching(cls):
+        """Returns whether it supports caching items on the fetch process.
+
+        :returns: this backend supports items cache
+        """
+        return True
+
+    @classmethod
+    def has_resuming(cls):
+        """Returns whether it supports to resume the fetch process.
+
+        :returns: this backend supports items resuming
+        """
+        return True
+
     @staticmethod
     def metadata_id(item):
-        """Extracts the identifier from an question item."""
+        """Extracts the identifier from a Kitsune item."""
 
         return str(item['id'])
 
@@ -228,6 +269,15 @@ class Kitsune(Backend):
         :returns: a UNIX timestamp
         """
         return float(str_to_datetime(item['updated']).timestamp())
+
+    @staticmethod
+    def metadata_category(item):
+        """Extracts the category from a Kitsune item.
+
+        This backend only generates one type of item which is
+        'question'.
+        """
+        return 'question'
 
 
 class KitsuneClient:
@@ -315,7 +365,7 @@ class KitsuneCommand(BackendCommand):
     def __init__(self, *args):
         super().__init__(*args)
         self.url = self.parsed_args.url
-        self.origin = self.parsed_args.origin
+        self.tag = self.parsed_args.tag
         self.outfile = self.parsed_args.outfile
         self.offset = self.parsed_args.offset
 
@@ -336,7 +386,7 @@ class KitsuneCommand(BackendCommand):
         else:
             cache = None
 
-        self.backend = Kitsune(self.url, cache=cache, origin=self.origin)
+        self.backend = Kitsune(self.url, tag=self.tag, cache=cache)
 
     def run(self):
         """Fetch and print the Events.

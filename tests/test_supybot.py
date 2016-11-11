@@ -53,19 +53,32 @@ class TestSupybotBackend(unittest.TestCase):
     def test_initialization(self):
         """Test whether attributes are initializated"""
 
-        backend = Supybot('http://example.com/', self.tmp_path, origin='test')
+        backend = Supybot('http://example.com/', self.tmp_path, tag='test')
 
         self.assertEqual(backend.uri, 'http://example.com/')
         self.assertEqual(backend.dirpath, self.tmp_path)
-        self.assertEqual(backend.origin, 'test')
+        self.assertEqual(backend.origin, 'http://example.com/')
+        self.assertEqual(backend.tag, 'test')
 
-        # When origin is empty or None it will be set to
+        # When tag is empty or None it will be set to
         # the value in uri
         backend = Supybot('http://example.com/', self.tmp_path)
         self.assertEqual(backend.origin, 'http://example.com/')
+        self.assertEqual(backend.tag, 'http://example.com/')
 
-        backend = Supybot('http://example.com/', self.tmp_path, origin='')
+        backend = Supybot('http://example.com/', self.tmp_path, tag='')
         self.assertEqual(backend.origin, 'http://example.com/')
+        self.assertEqual(backend.tag, 'http://example.com/')
+
+    def test_has_caching(self):
+        """Test if it returns False when has_caching is called"""
+
+        self.assertEqual(Supybot.has_caching(), False)
+
+    def test_has_resuming(self):
+        """Test if it returns True when has_resuming is called"""
+
+        self.assertEqual(Supybot.has_resuming(), True)
 
     def test_fetch(self):
         """Test if it parses a set of log files"""
@@ -96,6 +109,8 @@ class TestSupybotBackend(unittest.TestCase):
             self.assertEqual(message['origin'], 'http://example.com/')
             self.assertEqual(message['uuid'], expected[x][2])
             self.assertEqual(message['updated_on'], expected[x][3])
+            self.assertEqual(message['category'], 'message')
+            self.assertEqual(message['tag'], 'http://example.com/')
 
     def test_fetch_from_date(self):
         """Test whether a list of messages is returned since a given date"""
@@ -116,6 +131,8 @@ class TestSupybotBackend(unittest.TestCase):
             self.assertEqual(message['origin'], 'http://example.com/')
             self.assertEqual(message['uuid'], expected[x][2])
             self.assertEqual(message['updated_on'], expected[x][3])
+            self.assertEqual(message['category'], 'message')
+            self.assertEqual(message['tag'], 'http://example.com/')
 
     def test_parse_supybot_log(self):
         """Test whether it parses a log"""
@@ -124,13 +141,19 @@ class TestSupybotBackend(unittest.TestCase):
         messages = Supybot.parse_supybot_log('data/supybot_valid.log')
         messages = [m for m in messages]
 
-        self.assertEqual(len(messages), 96)
+        self.assertEqual(len(messages), 97)
 
         msg = messages[1]
         self.assertEqual(msg['timestamp'], '2012-10-17T09:16:29+0000')
         self.assertEqual(msg['type'], SupybotParser.TCOMMENT)
         self.assertEqual(msg['nick'], 'benpol')
         self.assertEqual(msg['body'], "they're related to fragmentation?")
+
+        msg = messages[-2]
+        self.assertEqual(msg['timestamp'], '2012-10-17T23:42:10+0000')
+        self.assertEqual(msg['type'], SupybotParser.TCOMMENT)
+        self.assertEqual(msg['nick'], 'supy-bot')
+        self.assertEqual(msg['body'], "[backend] Fix bug #23: invalid timestamp")
 
         msg = messages[-1]
         self.assertEqual(msg['timestamp'], '2012-10-17T23:42:26+0000')
@@ -152,12 +175,12 @@ class TestSupybotCommand(unittest.TestCase):
     def test_parsing_on_init(self):
         """Test if the class is initialized"""
 
-        args = ['--origin', 'test',
+        args = ['--tag', 'test',
                 'http://example.com', '/tmp/supybot']
 
         cmd = SupybotCommand(*args)
         self.assertIsInstance(cmd.parsed_args, argparse.Namespace)
-        self.assertEqual(cmd.parsed_args.origin, 'test')
+        self.assertEqual(cmd.parsed_args.tag, 'test')
         self.assertEqual(cmd.parsed_args.uri, 'http://example.com')
         self.assertEqual(cmd.parsed_args.ircdir, '/tmp/supybot')
         self.assertIsInstance(cmd.backend, Supybot)
@@ -179,7 +202,7 @@ class TestSupybotParser(unittest.TestCase):
             parser = SupybotParser(f)
             items = [item for item in parser.parse()]
 
-        self.assertEqual(len(items), 96)
+        self.assertEqual(len(items), 97)
 
         item = items[1]
         self.assertEqual(item['timestamp'], '2012-10-17T09:16:29+0000')
@@ -199,6 +222,12 @@ class TestSupybotParser(unittest.TestCase):
         self.assertEqual(item['nick'], 'MikeMcClurg')
         self.assertEqual(item['body'], "MikeMcClurg has quit IRC")
 
+        item = items[-2]
+        self.assertEqual(item['timestamp'], '2012-10-17T23:42:10+0000')
+        self.assertEqual(item['type'], SupybotParser.TCOMMENT)
+        self.assertEqual(item['nick'], 'supy-bot')
+        self.assertEqual(item['body'], "[backend] Fix bug #23: invalid timestamp")
+
         item = items[-1]
         self.assertEqual(item['timestamp'], '2012-10-17T23:42:26+0000')
         self.assertEqual(item['type'], SupybotParser.TCOMMENT)
@@ -215,7 +244,7 @@ class TestSupybotParser(unittest.TestCase):
             else:
                 nserver += 1
 
-        self.assertEqual(ncomments, 50)
+        self.assertEqual(ncomments, 51)
         self.assertEqual(nserver, 46)
 
     def test_parse_invalid_date(self):
@@ -376,6 +405,34 @@ class TestSupybotParser(unittest.TestCase):
 
         # There is not a message
         s = "*** X "
+        m = pattern.match(s)
+        self.assertIsNone(m)
+
+    def test_bot_pattern(self):
+        """Test the validation of bot lines"""
+
+        pattern = SupybotParser.SUPYBOT_BOT_REGEX
+
+        # These should have valid nicks and messages
+        s = "-mybot- a message"
+        m = pattern.match(s)
+        self.assertEqual(m.group('nick'), 'mybot')
+        self.assertEqual(m.group('body'), "a message")
+
+        s = "-skynet-bot- [remove] skynet removed the internet #801"
+        m = pattern.match(s)
+        self.assertEqual(m.group('nick'), 'skynet-bot')
+        self.assertEqual(m.group('body'), "[remove] skynet removed the internet #801")
+
+        # These messages are not valid
+
+        # Bot name not ends with - ***
+        s = "-mybot a message"
+        m = pattern.match(s)
+        self.assertIsNone(m)
+
+        # No message
+        s = "-mybot-"
         m = pattern.match(s)
         self.assertIsNone(m)
 
