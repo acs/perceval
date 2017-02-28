@@ -15,7 +15,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
-# Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA. 
+# Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA.
 #
 # Authors:
 #     Quan Zhou <quan@bitergia.com>
@@ -671,18 +671,26 @@ class TestGitHubCommand(unittest.TestCase):
                 '--tag', 'test', '--no-cache',
                 '--api-token', 'abcdefgh',
                 '--from-date', '1970-01-01',
-                'zhquan_example', 'repo']
+                '--owner', 'zhquan_example',
+                '--repository', 'repo']
 
         parsed_args = parser.parse(*args)
-        self.assertEqual(parsed_args.owner, 'zhquan_example')
-        self.assertEqual(parsed_args.repository, 'repo')
         self.assertEqual(parsed_args.sleep_for_rate, True)
         self.assertEqual(parsed_args.min_rate_to_sleep, 1)
         self.assertEqual(parsed_args.tag, 'test')
-        self.assertEqual(parsed_args.from_date, DEFAULT_DATETIME)
         self.assertEqual(parsed_args.no_cache, True)
         self.assertEqual(parsed_args.api_token, 'abcdefgh')
+        self.assertEqual(parsed_args.from_date, DEFAULT_DATETIME)
+        self.assertEqual(parsed_args.owner, 'zhquan_example')
+        self.assertEqual(parsed_args.repository, 'repo')
+        # Try to create the backend with the arguments
+        self.assertIsInstance(GitHubCommand(*args), GitHubCommand)
 
+        args += ['--username', 'zhquan']
+        parsed_args = parser.parse(*args)
+        self.assertEqual(parsed_args.username, 'zhquan')
+        with self.assertRaises(RuntimeError):
+            self.assertIsInstance(GitHubCommand(*args), GitHubCommand)
 
 if __name__ == "__main__":
     unittest.main(warnings='ignore')
