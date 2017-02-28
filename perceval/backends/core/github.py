@@ -14,7 +14,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
-# Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA. 
+# Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA.
 #
 # Authors:
 #     Alvaro del Castillo San Felix <acs@bitergia.com>
@@ -138,7 +138,13 @@ class GitHub(Backend):
         for raw_issues in issues_groups:
             self._push_cache_queue(raw_issues)
             self._flush_cache_queue()
-            issues = json.loads(raw_issues)
+
+            if self.login:
+                # Getting the issues for a user not a repo
+                # The results from the search API are different
+                issues = json.loads(raw_issues)["items"]
+            else:
+                issues = json.loads(raw_issues)
             for issue in issues:
                 for field in ['user', 'assignee']:
                     if issue[field]:
@@ -199,6 +205,9 @@ class GitHub(Backend):
                 for issue in self.__build_issues(issues):
                     yield issue
 
+            if 'items' in item:
+                # search result raw item. The issues are in the results field.
+                item = item['items']
             # Next issues to parse
             issues = item
 
@@ -259,6 +268,41 @@ class GitHub(Backend):
         """
         return 'issue'
 
+class GitHubLogin(GitHub):
+    """GitHubLogin backend for Perceval.
+
+    This class allows the fetch the issues and commits for a GitHub user.
+
+    :param login: GitHub user (login)
+    :param api_token: GitHub auth token to access the API
+    :param base_url: GitHub URL in enterprise edition case;
+        when no value is set the backend will be fetch the data
+        from the GitHub public site.
+    :param tag: label used to mark the data
+    :param cache: use issues already retrieved in cache
+    :param sleep_for_rate: sleep until rate limit is reset
+    :param min_rate_to_sleep: minimun rate needed to sleep until
+         it will be reset
+    """
+    version = '0.1.0'
+
+    def __init__(self, login=None,
+                 api_token=None, base_url=None,
+                 tag=None, cache=None,
+                 sleep_for_rate=False, min_rate_to_sleep=MIN_RATE_LIMIT):
+        origin = base_url if base_url else GITHUB_URL
+        origin = urljoin(origin, login)
+
+        Backend.__init__(self, origin, tag=tag, cache=cache)
+        self.login = login
+        self.api_token = api_token
+        owner = None
+        repository = None
+        self._users = {}  # internal users cache
+        # TODO: Change GitHubClient API to support better the login analysis
+        self.client = GitHubClient(owner, repository, api_token, base_url,
+                                   sleep_for_rate, min_rate_to_sleep, login=login)
+
 
 class GitHubClient:
     """ Client for retieving information from GitHub API """
@@ -267,7 +311,7 @@ class GitHubClient:
     _users_orgs = {}  # users orgs cache
 
     def __init__(self, owner, repository, token, base_url=None,
-                 sleep_for_rate=False, min_rate_to_sleep=MIN_RATE_LIMIT):
+                 sleep_for_rate=False, min_rate_to_sleep=MIN_RATE_LIMIT, login=None):
         self.owner = owner
         self.repository = repository
         self.token = token
@@ -275,6 +319,7 @@ class GitHubClient:
         self.rate_limit = None
         self.rate_limit_reset_ts = None
         self.sleep_for_rate = sleep_for_rate
+        self.login = login
 
         if min_rate_to_sleep > MAX_RATE_LIMIT:
             msg = "Minimum rate to sleep value exceeded (%d)."
@@ -288,28 +333,59 @@ class GitHubClient:
         github_api = GITHUB_API_URL
         if self.base_url:
             github_api = self.base_url
-        github_api_repos = github_api + "/repos"
-        url_repo = github_api_repos + "/" + self.owner + "/" + self.repository
-        return url_repo
+        if not self.login:
+            github_api_repos = github_api + "/repos"
+            url = github_api_repos + "/" + self.owner + "/" + self.repository
+        else:
+            url = github_api + "/search"
+        return url
+
+    def __get_commits_url(self, startdate=None):
+        if not self.login:
+            url_commits = self.__get_url() + "/commits"
+        else:
+            url_commits = self.__get_url() + "/commits?q=author:"+self.login
+            if startdate:
+                # Convert to isoformat and remove the timezone (it is utc)
+                startdate = startdate.isoformat().split("+")[0]
+                url_commits += "+updated:>=" + startdate
+        return url_commits
 
     def __get_issues_url(self, startdate=None):
-        url_issues = self.__get_url() + "/issues"
+        if not self.login:
+            url_issues = self.__get_url() + "/issues"
+        else:
+            url_issues = self.__get_url() + "/issues?q=author:"+self.login
+            if startdate:
+                # Convert to isoformat and remove the timezone (it is utc)
+                startdate = startdate.isoformat().split("+")[0]
+                url_issues += "+updated:>=" + startdate
         return url_issues
 
     def __get_payload(self, startdate=None):
         # 100 in other items. 20 for pull requests. 30 issues
+        sort_field = "updated"
+        if self.login:
+            # sort_field = "author_date" ## for commits
+            sort_field = "updated"
         payload = {'per_page': 30,
                    'state': 'all',
-                   'sort': 'updated',
+                   'sort': sort_field,
                    'direction': 'asc'}
         if startdate:
             startdate = startdate.isoformat()
-            payload['since'] = startdate
+            if self.login:
+                payload['updated'] = startdate
+            else:
+                payload['since'] = startdate
         return payload
 
     def __get_headers(self):
         if self.token:
             headers = {'Authorization': 'token ' + self.token}
+            if self.login:
+                # Test the Commit Search during its preview period
+                headers['Accept'] = "application/vnd.github.cloak-preview+json"
             return headers
 
     def __send_request(self, url, params=None, headers=None):
@@ -324,6 +400,7 @@ class GitHubClient:
             else:
                 raise RateLimitError(cause=cause, seconds_to_reset=seconds_to_reset)
 
+        print (url, params, headers)
         r = requests.get(url, params=params, headers=headers)
         r.raise_for_status()
         self.rate_limit = int(r.headers['X-RateLimit-Remaining'])
@@ -333,14 +410,23 @@ class GitHubClient:
 
     def get_issues(self, start=None):
         """ Return the items from github API using links pagination """
+        return self.__get_items(start, issues=True)
 
+    def get_commits(self, start=None):
+        """ Return the items from github API using links pagination """
+        return self.__get_items(start, issues=False)
+
+    def __get_items(self, start=None, issues=True):
         page = 0  # current page
         last_page = None  # last page
-        url_next = self.__get_issues_url(start)
+        if issues:
+            url_next = self.__get_issues_url(start)
+        else:
+            url_next = self.__get_commits_url(start)
 
-        logger.debug("Get GitHub issues from " + url_next)
+        logger.debug("Get GitHub items from " + url_next)
         r = self.__send_request(url_next, self.__get_payload(start),
-                              self.__get_headers())
+                                self.__get_headers())
         issues = r.text
         page += 1
 
