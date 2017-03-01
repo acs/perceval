@@ -130,13 +130,14 @@ class GitHub(Backend):
         return user
 
     @metadata
-    def fetch(self, from_date=DEFAULT_DATETIME):
+    def fetch(self, from_date=DEFAULT_DATETIME, category='issues'):
         """Fetch the issues from the repository.
 
         The method retrieves, from a GitHub repository, the issues
         updated since the given date.
 
         :param from_date: obtain issues updated since this date
+        :param category: items category to collect
 
         :returns: a generator of issues
         """
@@ -154,25 +155,31 @@ class GitHub(Backend):
                                        self.base_url, self.sleep_for_rate,
                                        self.min_rate_to_sleep, username=self.username)
 
-        issues_groups = self.client.get_issues(from_date)
+        if category == 'issues':
+            items_groups = self.client.get_issues(from_date)
+        elif category == 'commits':
+            items_groups = self.client.get_commits(from_date)
+        else:
+            raise RuntimeError("GitHub backend does not support category %s", category)
 
-        for raw_issues in issues_groups:
-            self._push_cache_queue(raw_issues)
+        for raw_items in items_groups:
+            self._push_cache_queue(raw_items)
             self._flush_cache_queue()
 
             if self.username:
-                # Getting the issues for a user not a repo
+                # Getting the items for a user not a repo
                 # The results from the search API are different
-                issues = json.loads(raw_issues)["items"]
+                items = json.loads(raw_items)["items"]
             else:
-                issues = json.loads(raw_issues)
-            for issue in issues:
-                for field in ['user', 'assignee']:
-                    if issue[field]:
-                        issue[field+"_data"] = self.__get_user(issue[field]['login'])
-                    else:
-                        issue[field+"_data"] = {}
-                yield issue
+                items = json.loads(raw_items)
+            for item in items:
+                if category == 'issues':
+                    for field in ['user', 'assignee']:
+                        if item[field]:
+                            item[field+"_data"] = self.__get_user(item[field]['login'])
+                        else:
+                            item[field+"_data"] = {}
+                yield item
 
     @metadata
     def fetch_from_cache(self):
@@ -261,7 +268,14 @@ class GitHub(Backend):
     def metadata_id(item):
         """Extracts the identifier from a GitHub item."""
 
-        return str(item['id'])
+        if 'id' in item:
+            # issues
+            mid = str(item['id'])
+        else:
+            # commits
+            mid = str(item['sha'])
+
+        return mid
 
     @staticmethod
     def metadata_updated_on(item):
@@ -275,7 +289,14 @@ class GitHub(Backend):
 
         :returns: a UNIX timestamp
         """
-        ts = item['updated_at']
+
+        if 'updated_at' in item:
+            # issues
+            ts = item['updated_at']
+        else:
+            # commits
+            ts = item['commit']['author']['date']
+
         ts = str_to_datetime(ts)
 
         return ts.timestamp()
@@ -287,7 +308,13 @@ class GitHub(Backend):
         This backend only generates one type of item which is
         'issue'.
         """
-        return 'issue'
+
+        if 'sha' in item:
+            category = 'commit'
+        else:
+            category = 'issue'
+
+        return category
 
 
 class GitHubClient:
@@ -295,6 +322,12 @@ class GitHubClient:
 
     _users = {}       # users cache
     _users_orgs = {}  # users orgs cache
+    # https://developer.github.com/v3/search/#search-issues
+    # involves: finds issues or pull requests that were either
+    # created by a certain user, assigned to that user, mention that user,
+    # or were commented on by that user.
+    USERNAME_ISSUES_FIELD = 'involves'  # author
+    USERNAME_COMMITS_FIELD = 'author'  # committer
 
     def __init__(self, owner, repository, token, base_url=None,
                  sleep_for_rate=False, min_rate_to_sleep=MIN_RATE_LIMIT,
@@ -331,30 +364,34 @@ class GitHubClient:
         if not self.username:
             url_commits = self.__get_url() + "/commits"
         else:
-            url_commits = self.__get_url() + "/commits?q=author:"+self.username
+            url_commits = self.__get_url() + "/commits?q="
+            url_commits += self.USERNAME_COMMITS_FIELD + ":" + self.username
             if startdate:
                 # Convert to isoformat and remove the timezone (it is utc)
                 startdate = startdate.isoformat().split("+")[0]
-                url_commits += "+updated:>=" + startdate
+                url_commits += "+author-date:>=" + startdate
         return url_commits
 
     def __get_issues_url(self, startdate=None):
         if not self.username:
             url_issues = self.__get_url() + "/issues"
         else:
-            url_issues = self.__get_url() + "/issues?q=author:"+self.username
+            url_issues = self.__get_url() + "/issues?q="
+            url_issues += self.USERNAME_ISSUES_FIELD + ":" + self.username
             if startdate:
                 # Convert to isoformat and remove the timezone (it is utc)
                 startdate = startdate.isoformat().split("+")[0]
                 url_issues += "+updated:>=" + startdate
         return url_issues
 
-    def __get_payload(self, startdate=None):
+    def __get_payload(self, startdate=None, is_issues=True):
         # 100 in other items. 20 for pull requests. 30 issues
         sort_field = "updated"
         if self.username:
-            # sort_field = "author_date" ## for commits
-            sort_field = "updated"
+            if is_issues:
+                sort_field = "updated"
+            else:
+                sort_field = "author_date"
         payload = {'per_page': 30,
                    'state': 'all',
                    'sort': sort_field,
@@ -368,10 +405,10 @@ class GitHubClient:
     def __get_headers(self):
         if self.token:
             headers = {'Authorization': 'token ' + self.token}
-            if self.username:
-                # Test the Commit Search during its preview period
-                headers['Accept'] = "application/vnd.github.cloak-preview+json"
-            return headers
+        if self.username:
+            # Test the Commit Search during its preview period
+            headers['Accept'] = "application/vnd.github.cloak-preview+json"
+        return headers
 
     def __send_request(self, url, params=None, headers=None):
         """ GET HTTP caring of rate limit """
@@ -394,22 +431,22 @@ class GitHubClient:
 
     def get_issues(self, start=None):
         """ Return the items from github API using links pagination """
-        return self.__get_items(start, issues=True)
+        return self.__get_items(start, is_issues=True)
 
     def get_commits(self, start=None):
         """ Return the items from github API using links pagination """
-        return self.__get_items(start, issues=False)
+        return self.__get_items(start, is_issues=False)
 
-    def __get_items(self, start=None, issues=True):
+    def __get_items(self, start=None, is_issues=True):
         page = 0  # current page
         last_page = None  # last page
-        if issues:
+        if is_issues:
             url_next = self.__get_issues_url(start)
         else:
             url_next = self.__get_commits_url(start)
 
         logger.debug("Get GitHub items from " + url_next)
-        r = self.__send_request(url_next, self.__get_payload(start),
+        r = self.__send_request(url_next, self.__get_payload(start, is_issues),
                                 self.__get_headers())
         issues = r.text
         page += 1
@@ -427,7 +464,9 @@ class GitHubClient:
 
             if 'next' in r.links:
                 url_next = r.links['next']['url']  # Loving requests :)
-                r = self.__send_request(url_next, self.__get_payload(start), self.__get_headers())
+                r = self.__send_request(url_next,
+                                        self.__get_payload(start, is_issues),
+                                        self.__get_headers())
                 page += 1
                 issues = r.text
                 logger.debug("Page: %i/%i", page, last_page)
@@ -476,12 +515,14 @@ class GitHubCommand(BackendCommand):
                                               cache=True)
         # GitHub options
         group = parser.parser.add_argument_group('GitHub arguments')
-        group.add_argument('--sleep-for-rate', dest='sleep_for_rate',
-                           action='store_true',
-                           help="sleep for getting more rate")
+        group.add_argument("--category", default='issues',
+                           help="category could be issues and commits")
         group.add_argument('--min-rate-to-sleep', dest='min_rate_to_sleep',
                            default=MIN_RATE_LIMIT, type=int,
                            help="sleep until reset when the rate limit reaches this value")
+        group.add_argument('--sleep-for-rate', dest='sleep_for_rate',
+                           action='store_true',
+                           help="sleep for getting more rate")
         group.add_argument('--owner', help="GitHub owner")
         group.add_argument('--repository', help="GitHub repository")
         group.add_argument('--username', help="GitHub username to get activity from")
