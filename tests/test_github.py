@@ -76,7 +76,6 @@ def configure_http_server():
 
 
     def request_callback(method, uri, headers):
-
         last_request = httpretty.last_request()
 
         if uri.startswith(GITHUB_ISSUES_URL):
@@ -86,7 +85,8 @@ def configure_http_server():
             else:
                 body = issues
         elif uri.startswith(GITHUB_SEARCH_ISSUES_URL):
-            if 'updated:' not in uri:
+            # the uri always include "updated=". 1970-01-01 is for all issues
+            if '1970-01-01' in uri:
                 body = search_issues
             else:
                 body = search_issues_from_date
@@ -199,10 +199,6 @@ class TestGitHubBackend(unittest.TestCase):
 
         self.assertEqual(GitHub.has_resuming(), True)
 
-    def test_fetch(self):
-        self.test_fetch_repo()
-        self.test_fetch_username()
-
     @httpretty.activate
     def test_fetch_repo(self):
         """ Test whether a list of issues is returned for a repo """
@@ -210,6 +206,9 @@ class TestGitHubBackend(unittest.TestCase):
         http_requests = configure_http_server()
 
         github = GitHub("zhquan_example", "repo", "aaa")
+        # clean cache so the test does always all the http requests
+        GitHubClient._users = {}
+        GitHubClient._users_orgs = {}
         issues = [issues for issues in github.fetch()]
 
         self.assertEqual(len(issues), 1)
@@ -232,6 +231,10 @@ class TestGitHubBackend(unittest.TestCase):
         http_requests = configure_http_server()
 
         github = GitHub(username="zhquan", api_token="aaa")
+        # clean cache so the test does always all the http requests
+        GitHubClient._users = {}
+        GitHubClient._users_orgs = {}
+
         issues = [issues for issues in github.fetch()]
 
         self.assertEqual(len(issues), 3)
@@ -397,11 +400,6 @@ class TestGitHubBackendCache(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.tmp_path)
-
-    @httpretty.activate
-    def test_fetch_from_cache(self):
-        self.test_fetch_from_cache_repo()
-        self.test_fetch_from_cache_username()
 
     @httpretty.activate
     def test_fetch_from_cache_repo(self):
