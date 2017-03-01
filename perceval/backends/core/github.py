@@ -195,6 +195,11 @@ class GitHub(Backend):
         :raises CacheError: raised when an error occurs accessing the
             cache
         """
+
+        #
+        # TODO: Cache not supported for commits category!
+        #
+
         if not self.cache:
             raise CacheError(cause="cache instance was not provided")
 
