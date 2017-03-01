@@ -89,11 +89,16 @@ class GitHub(Backend):
                  base_url=None,
                  tag=None, cache=None,
                  sleep_for_rate=False, min_rate_to_sleep=MIN_RATE_LIMIT):
-        origin = base_url if base_url else GITHUB_URL
-        origin = urljoin(origin, owner, repository)
 
         if (owner and repository) and username:
             raise RuntimeError("Can not get GitHub items for a repository and a username at the same time")
+
+        origin = base_url if base_url else GITHUB_URL
+
+        if owner and repository:
+            origin = urljoin(origin, owner, repository)
+        elif username:
+            origin = urljoin(origin, username)
 
         super().__init__(origin, tag=tag, cache=cache)
         self.base_url = base_url
@@ -147,8 +152,7 @@ class GitHub(Backend):
         elif self.username:
             self.client = GitHubClient(self.owner, self.repository, self.api_token,
                                        self.base_url, self.sleep_for_rate,
-                                       self.min_rate_to_sleep, login=self.usernamelogin)
-
+                                       self.min_rate_to_sleep, username=self.username)
 
         issues_groups = self.client.get_issues(from_date)
 

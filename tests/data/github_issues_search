@@ -1,0 +1,168 @@
+{
+  "total_count": 3,
+  "incomplete_results": false,
+  "items": [
+    {
+      "url": "https://api.github.com/repos/Bitergia/mordred/issues/16",
+      "repository_url": "https://api.github.com/repos/Bitergia/mordred",
+      "labels_url": "https://api.github.com/repos/Bitergia/mordred/issues/16/labels{/name}",
+      "comments_url": "https://api.github.com/repos/Bitergia/mordred/issues/16/comments",
+      "events_url": "https://api.github.com/repos/Bitergia/mordred/issues/16/events",
+      "html_url": "https://github.com/Bitergia/mordred/pull/16",
+      "id": 204568189,
+      "number": 16,
+      "title": "Update the projects.json directly to the github repository given the uri",
+      "user": {
+        "login": "zhquan",
+        "id": 5637233,
+        "avatar_url": "https://avatars2.githubusercontent.com/u/5637233?v=3",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/zhquan",
+        "html_url": "https://github.com/zhquan",
+        "followers_url": "https://api.github.com/users/zhquan/followers",
+        "following_url": "https://api.github.com/users/zhquan/following{/other_user}",
+        "gists_url": "https://api.github.com/users/zhquan/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/zhquan/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/zhquan/subscriptions",
+        "organizations_url": "https://api.github.com/users/zhquan/orgs",
+        "repos_url": "https://api.github.com/users/zhquan/repos",
+        "events_url": "https://api.github.com/users/zhquan/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/zhquan/received_events",
+        "type": "User",
+        "site_admin": false
+      },
+      "labels": [
+        {
+          "id": 430199742,
+          "url": "https://api.github.com/repos/Bitergia/mordred/labels/enhancement",
+          "name": "enhancement",
+          "color": "84b6eb",
+          "default": true
+        }
+      ],
+      "state": "open",
+      "locked": false,
+      "assignee": null,
+      "assignees": [
+
+      ],
+      "milestone": null,
+      "comments": 1,
+      "created_at": "2017-02-01T12:13:34Z",
+      "updated_at": "2017-02-24T20:38:04Z",
+      "closed_at": null,
+      "pull_request": {
+        "url": "https://api.github.com/repos/Bitergia/mordred/pulls/16",
+        "html_url": "https://github.com/Bitergia/mordred/pull/16",
+        "diff_url": "https://github.com/Bitergia/mordred/pull/16.diff",
+        "patch_url": "https://github.com/Bitergia/mordred/pull/16.patch"
+      },
+      "body": "If the uri is not valid will update the given local projects.json",
+      "score": 1.0
+    },
+    {
+      "url": "https://api.github.com/repos/Bitergia/mordred/issues/8",
+      "repository_url": "https://api.github.com/repos/Bitergia/mordred",
+      "labels_url": "https://api.github.com/repos/Bitergia/mordred/issues/8/labels{/name}",
+      "comments_url": "https://api.github.com/repos/Bitergia/mordred/issues/8/comments",
+      "events_url": "https://api.github.com/repos/Bitergia/mordred/issues/8/events",
+      "html_url": "https://github.com/Bitergia/mordred/pull/8",
+      "id": 190960853,
+      "number": 8,
+      "title": "get the repos for a Github organization",
+      "user": {
+        "login": "zhquan",
+        "id": 5637233,
+        "avatar_url": "https://avatars2.githubusercontent.com/u/5637233?v=3",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/zhquan",
+        "html_url": "https://github.com/zhquan",
+        "followers_url": "https://api.github.com/users/zhquan/followers",
+        "following_url": "https://api.github.com/users/zhquan/following{/other_user}",
+        "gists_url": "https://api.github.com/users/zhquan/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/zhquan/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/zhquan/subscriptions",
+        "organizations_url": "https://api.github.com/users/zhquan/orgs",
+        "repos_url": "https://api.github.com/users/zhquan/repos",
+        "events_url": "https://api.github.com/users/zhquan/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/zhquan/received_events",
+        "type": "User",
+        "site_admin": false
+      },
+      "labels": [
+
+      ],
+      "state": "open",
+      "locked": false,
+      "assignee": null,
+      "assignees": [
+
+      ],
+      "milestone": null,
+      "comments": 3,
+      "created_at": "2016-11-22T10:27:21Z",
+      "updated_at": "2017-01-09T15:59:25Z",
+      "closed_at": null,
+      "pull_request": {
+        "url": "https://api.github.com/repos/Bitergia/mordred/pulls/8",
+        "html_url": "https://github.com/Bitergia/mordred/pull/8",
+        "diff_url": "https://github.com/Bitergia/mordred/pull/8.diff",
+        "patch_url": "https://github.com/Bitergia/mordred/pull/8.patch"
+      },
+      "body": "",
+      "score": 1.0
+    },
+    {
+      "url": "https://api.github.com/repos/grimoirelab/GrimoireELK/issues/65",
+      "repository_url": "https://api.github.com/repos/grimoirelab/GrimoireELK",
+      "labels_url": "https://api.github.com/repos/grimoirelab/GrimoireELK/issues/65/labels{/name}",
+      "comments_url": "https://api.github.com/repos/grimoirelab/GrimoireELK/issues/65/comments",
+      "events_url": "https://api.github.com/repos/grimoirelab/GrimoireELK/issues/65/events",
+      "html_url": "https://github.com/grimoirelab/GrimoireELK/pull/65",
+      "id": 187212408,
+      "number": 65,
+      "title": "Update hg repositories like git",
+      "user": {
+        "login": "zhquan",
+        "id": 5637233,
+        "avatar_url": "https://avatars2.githubusercontent.com/u/5637233?v=3",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/zhquan",
+        "html_url": "https://github.com/zhquan",
+        "followers_url": "https://api.github.com/users/zhquan/followers",
+        "following_url": "https://api.github.com/users/zhquan/following{/other_user}",
+        "gists_url": "https://api.github.com/users/zhquan/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/zhquan/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/zhquan/subscriptions",
+        "organizations_url": "https://api.github.com/users/zhquan/orgs",
+        "repos_url": "https://api.github.com/users/zhquan/repos",
+        "events_url": "https://api.github.com/users/zhquan/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/zhquan/received_events",
+        "type": "User",
+        "site_admin": false
+      },
+      "labels": [
+
+      ],
+      "state": "open",
+      "locked": false,
+      "assignee": null,
+      "assignees": [
+
+      ],
+      "milestone": null,
+      "comments": 0,
+      "created_at": "2016-11-03T22:56:54Z",
+      "updated_at": "2017-02-27T18:14:48Z",
+      "closed_at": null,
+      "pull_request": {
+        "url": "https://api.github.com/repos/grimoirelab/GrimoireELK/pulls/65",
+        "html_url": "https://github.com/grimoirelab/GrimoireELK/pull/65",
+        "diff_url": "https://github.com/grimoirelab/GrimoireELK/pull/65.diff",
+        "patch_url": "https://github.com/grimoirelab/GrimoireELK/pull/65.patch"
+      },
+      "body": "",
+      "score": 1.0
+    }
+  ]
+}

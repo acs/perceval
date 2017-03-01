@@ -19,6 +19,7 @@
 #
 # Authors:
 #     Quan Zhou <quan@bitergia.com>
+#     Alvaro del Castillo <acs@bitergia.com>
 #
 
 import datetime
@@ -49,16 +50,104 @@ from perceval.backends.core.github import (GitHub,
 
 
 GITHUB_API_URL = "https://api.github.com"
-GITHUB_ISSUES_URL = GITHUB_API_URL + "/repos/zhquan_example/repo/issues"
-GITHUB_USER_URL = GITHUB_API_URL + "/users/zhquan_example"
-GITHUB_ORGS_URL = GITHUB_API_URL + "/users/zhquan_example/orgs"
 GITHUB_COMMAND_URL = GITHUB_API_URL + "/command"
-
+GITHUB_ISSUES_URL = GITHUB_API_URL + "/repos/zhquan_example/repo/issues"
+GITHUB_ORGS_URL = GITHUB_API_URL + "/users/zhquan_example/orgs"
+GITHUB_SEARCH_ORGS_URL = GITHUB_API_URL + "/users/zhquan/orgs"
+GITHUB_SEARCH_ISSUES_URL = GITHUB_API_URL + "/search/issues?q=author:zhquan"
+GITHUB_SEARCH_USER_URL = GITHUB_API_URL + "/users/zhquan"
+GITHUB_USER_URL = GITHUB_API_URL + "/users/zhquan_example"
 
 def read_file(filename, mode='r'):
     with open(filename, mode) as f:
         content = f.read()
     return content
+
+def configure_http_server():
+    http_requests = []
+
+    issues = read_file('data/github_issues')
+    issues_from_date = read_file('data/github_issue_2')
+    login = read_file('data/github_login')
+    login_1 = read_file('data/github_login_1')
+    orgs = read_file('data/github_orgs')
+    search_issues = read_file('data/github_issues_search')
+    search_issues_from_date = read_file('data/github_issues_search_from_date')
+
+
+    def request_callback(method, uri, headers):
+
+        last_request = httpretty.last_request()
+
+        if uri.startswith(GITHUB_ISSUES_URL):
+            # the uri always include "since=". 1970-01-01 is for all issues
+            if 'since=1970' not in uri:
+                body = issues_from_date
+            else:
+                body = issues
+        elif uri.startswith(GITHUB_SEARCH_ISSUES_URL):
+            if 'updated:' not in uri:
+                body = search_issues
+            else:
+                body = search_issues_from_date
+        elif uri.startswith(GITHUB_ORGS_URL) or \
+            uri.startswith(GITHUB_SEARCH_ORGS_URL):
+            body = orgs
+        elif uri.startswith(GITHUB_USER_URL):
+            body = login
+        elif uri.startswith(GITHUB_SEARCH_USER_URL):
+            body = login_1
+        else:
+            body = ''
+
+        http_requests.append(last_request)
+
+        # Headeres returned in all http queries
+        headers.update({
+            'X-RateLimit-Remaining': '20',
+            'X-RateLimit-Reset': '15'
+        })
+
+        return (200, headers, body)
+
+
+    httpretty.register_uri(httpretty.GET,
+                           GITHUB_ISSUES_URL,
+                           responses=[
+                                httpretty.Response(body=request_callback)
+                           ])
+
+    httpretty.register_uri(httpretty.GET,
+                           GITHUB_ORGS_URL,
+                           responses=[
+                                httpretty.Response(body=request_callback)
+                           ])
+
+    httpretty.register_uri(httpretty.GET,
+                           GITHUB_SEARCH_ORGS_URL,
+                           responses=[
+                                httpretty.Response(body=request_callback)
+                           ])
+
+    httpretty.register_uri(httpretty.GET,
+                           GITHUB_SEARCH_ISSUES_URL,
+                           responses=[
+                                httpretty.Response(body=request_callback)
+                           ])
+
+    httpretty.register_uri(httpretty.GET,
+                           GITHUB_SEARCH_USER_URL,
+                           responses=[
+                                httpretty.Response(body=request_callback)
+                           ])
+
+    httpretty.register_uri(httpretty.GET,
+                           GITHUB_USER_URL,
+                           responses=[
+                                httpretty.Response(body=request_callback)
+                           ])
+
+    return http_requests
 
 
 class TestGitHubBackend(unittest.TestCase):
@@ -88,6 +177,18 @@ class TestGitHubBackend(unittest.TestCase):
         self.assertEqual(github.origin, 'https://github.com/zhquan_example/repo')
         self.assertEqual(github.tag, 'https://github.com/zhquan_example/repo')
 
+        # username option
+        github = GitHub(username='zhquan', api_token='aaa', tag='')
+        self.assertEqual(github.owner, None)
+        self.assertEqual(github.repository, None)
+        self.assertEqual(github.origin, 'https://github.com/zhquan')
+        self.assertEqual(github.tag, 'https://github.com/zhquan')
+
+        with self.assertRaises(RuntimeError):
+            # Can't use repo and username at the same time
+            github = GitHub('zhquan_example', 'repo', username='zhquan',
+                            api_token='aaa', tag='')
+
     def test_has_caching(self):
         """Test if it returns True when has_caching is called"""
 
@@ -98,49 +199,53 @@ class TestGitHubBackend(unittest.TestCase):
 
         self.assertEqual(GitHub.has_resuming(), True)
 
-    @httpretty.activate
     def test_fetch(self):
-        """ Test whether a list of issues is returned """
+        self.test_fetch_repo()
+        self.test_fetch_username()
 
-        body = read_file('data/github_request')
-        login = read_file('data/github_login')
-        orgs = read_file('data/github_orgs')
+    @httpretty.activate
+    def test_fetch_repo(self):
+        """ Test whether a list of issues is returned for a repo """
 
-        httpretty.register_uri(httpretty.GET,
-                               GITHUB_ISSUES_URL,
-                               body=body,
-                               status=200,
-                               forcing_headers={
-                                    'X-RateLimit-Remaining': '20',
-                                    'X-RateLimit-Reset': '15'
-                               })
-        httpretty.register_uri(httpretty.GET,
-                              GITHUB_USER_URL,
-                              body=login, status=200,
-                              forcing_headers={
-                                   'X-RateLimit-Remaining': '20',
-                                   'X-RateLimit-Reset': '15'
-                              })
-        httpretty.register_uri(httpretty.GET,
-                               GITHUB_ORGS_URL,
-                               body=orgs, status=200,
-                               forcing_headers={
-                                    'X-RateLimit-Remaining': '20',
-                                    'X-RateLimit-Reset': '15'
-                               })
+        http_requests = configure_http_server()
 
         github = GitHub("zhquan_example", "repo", "aaa")
         issues = [issues for issues in github.fetch()]
 
         self.assertEqual(len(issues), 1)
 
-        expected = json.loads(read_file('data/github_request_expected'))
+        expected = json.loads(read_file('data/github_issues_expected'))
         self.assertEqual(issues[0]['origin'], 'https://github.com/zhquan_example/repo')
         self.assertEqual(issues[0]['uuid'], '58c073fd2a388c44043b9cc197c73c5c540270ac')
         self.assertEqual(issues[0]['updated_on'], 1454328801.0)
         self.assertEqual(issues[0]['category'], 'issue')
         self.assertEqual(issues[0]['tag'], 'https://github.com/zhquan_example/repo')
         self.assertDictEqual(issues[0]['data'], expected)
+
+        # issue + user data + orgs data
+        self.assertEqual(len(http_requests), 3)
+
+    @httpretty.activate
+    def test_fetch_username(self):
+        """ Test whether a list of issues is returned """
+
+        http_requests = configure_http_server()
+
+        github = GitHub(username="zhquan", api_token="aaa")
+        issues = [issues for issues in github.fetch()]
+
+        self.assertEqual(len(issues), 3)
+
+        expected = json.loads(read_file('data/github_issues_search_expected'))
+        self.assertEqual(issues[0]['origin'], 'https://github.com/zhquan')
+        self.assertEqual(issues[0]['uuid'], '976baacd7959f2009195dab1b32c6a36c2625711')
+        self.assertEqual(issues[0]['updated_on'],1487968684.0)
+        self.assertEqual(issues[0]['category'], 'issue')
+        self.assertEqual(issues[0]['tag'], 'https://github.com/zhquan')
+        self.assertDictEqual(issues[0]['data'], expected)
+
+        # issue + user data + orgs data
+        self.assertEqual(len(http_requests), 3)
 
     @httpretty.activate
     def test_fetch_more_issues(self):
@@ -203,35 +308,15 @@ class TestGitHubBackend(unittest.TestCase):
         self.assertEqual(issues[1]['tag'], 'https://github.com/zhquan_example/repo')
         self.assertDictEqual(issues[1]['data'], expected_2)
 
-    @httpretty.activate
     def test_fetch_from_date(self):
-        """ Test when return from date """
+        self.test_fetch_from_date_repo()
+        self.test_fetch_from_date_username()
 
-        login = read_file('data/github_login')
-        body = read_file('data/github_issue_2')
+    @httpretty.activate
+    def test_fetch_from_date_repo(self):
+        """ Test when return issues from date for a repo"""
 
-        httpretty.register_uri(httpretty.GET,
-                               GITHUB_ISSUES_URL,
-                               body=body,
-                               status=200,
-                               forcing_headers={
-                                    'X-RateLimit-Remaining': '20',
-                                    'X-RateLimit-Reset': '15'
-                               })
-        httpretty.register_uri(httpretty.GET,
-                              GITHUB_USER_URL,
-                              body=login, status=200,
-                              forcing_headers={
-                                   'X-RateLimit-Remaining': '20',
-                                   'X-RateLimit-Reset': '15'
-                              })
-        httpretty.register_uri(httpretty.GET,
-                               GITHUB_ORGS_URL,
-                               body="[]", status=200,
-                               forcing_headers={
-                                    'X-RateLimit-Remaining': '20',
-                                    'X-RateLimit-Reset': '15'
-                               })
+        configure_http_server()
 
         from_date = datetime.datetime(2016, 3, 1)
         github = GitHub("zhquan_example", "repo", "aaa")
@@ -248,7 +333,27 @@ class TestGitHubBackend(unittest.TestCase):
         self.assertDictEqual(issues[0]['data'], expected)
 
     @httpretty.activate
-    def test_feth_empty(self):
+    def test_fetch_from_date_username(self):
+        """ Test when return issues from date for a username"""
+
+        configure_http_server()
+
+        from_date = datetime.datetime(2016, 3, 1)
+        github = GitHub(username="zhquan", api_token="aaa")
+
+        issues = [issues for issues in github.fetch(from_date=from_date)]
+        self.assertEqual(len(issues), 3)
+
+        expected = json.loads(read_file('data/github_issues_search_from_date_expected'))
+        self.assertEqual(issues[0]['origin'], 'https://github.com/zhquan')
+        self.assertEqual(issues[0]['uuid'], '6745e0fdb75f1fb44780576d7fefec0236a54298')
+        self.assertEqual(issues[0]['updated_on'], 1488219288.0)
+        self.assertEqual(issues[0]['category'], 'issue')
+        self.assertEqual(issues[0]['tag'], 'https://github.com/zhquan')
+        self.assertDictEqual(issues[0]['data'], expected)
+
+    @httpretty.activate
+    def test_fetch_empty(self):
         """ Test when return empty """
 
         body = ""
@@ -295,37 +400,42 @@ class TestGitHubBackendCache(unittest.TestCase):
 
     @httpretty.activate
     def test_fetch_from_cache(self):
+        self.test_fetch_from_cache_repo()
+        self.test_fetch_from_cache_username()
+
+    @httpretty.activate
+    def test_fetch_from_cache_repo(self):
         """ Test whether a list of issues is returned from cache """
 
-        body = read_file('data/github_request')
-        login = read_file('data/github_login')
-
-        httpretty.register_uri(httpretty.GET,
-                               GITHUB_ISSUES_URL,
-                               body=body, status=200,
-                               forcing_headers={
-                                    'X-RateLimit-Remaining': '20',
-                                    'X-RateLimit-Reset': '15'
-                               })
-        httpretty.register_uri(httpretty.GET,
-                              GITHUB_USER_URL,
-                              body=login, status=200,
-                              forcing_headers={
-                                   'X-RateLimit-Remaining': '20',
-                                   'X-RateLimit-Reset': '15'
-                              })
-        httpretty.register_uri(httpretty.GET,
-                               GITHUB_ORGS_URL,
-                               body="[]", status=200,
-                               forcing_headers={
-                                    'X-RateLimit-Remaining': '20',
-                                    'X-RateLimit-Reset': '15'
-                               })
+        configure_http_server()
 
         # First, we fetch the bugs from the server, storing them
         # in a cache
         cache = Cache(self.tmp_path)
         github = GitHub("zhquan_example", "repo", "aaa", cache=cache)
+
+        issues = [issues for issues in github.fetch()]
+
+        # Now, we get the bugs from the cache.
+        # The contents should be the same and there won't be
+        # any new request to the server
+        cache_issues = [cache_issues for cache_issues in github.fetch_from_cache()]
+
+        del issues[0]['timestamp']
+        del cache_issues[0]['timestamp']
+        self.assertDictEqual(issues[0], cache_issues[0])
+        self.assertEqual(len(issues), len(cache_issues))
+
+    @httpretty.activate
+    def test_fetch_from_cache_username(self):
+        """ Test whether a list of issues is returned from cache """
+
+        configure_http_server()
+
+        # First, we fetch the bugs from the server, storing them
+        # in a cache
+        cache = Cache(self.tmp_path)
+        github = GitHub(username="zhquan", api_token="aaa", cache=cache)
 
         issues = [issues for issues in github.fetch()]
 
@@ -365,7 +475,7 @@ class TestGitHubClient(unittest.TestCase):
     def test_get_issues(self):
         """ Test get_issues API call """
 
-        issue = read_file('data/github_request')
+        issue = read_file('data/github_issues')
 
         httpretty.register_uri(httpretty.GET,
                                GITHUB_ISSUES_URL,
@@ -395,7 +505,7 @@ class TestGitHubClient(unittest.TestCase):
     def test_get_from_date_issues(self):
         """ Test get_from_issues API call """
 
-        issue = read_file('data/github_request_from_2016_03_01')
+        issue = read_file('data/github_issues_from_2016_03_01')
 
         httpretty.register_uri(httpretty.GET,
                                GITHUB_ISSUES_URL,
@@ -690,6 +800,7 @@ class TestGitHubCommand(unittest.TestCase):
         parsed_args = parser.parse(*args)
         self.assertEqual(parsed_args.username, 'zhquan')
         with self.assertRaises(RuntimeError):
+            # Can't use repo and username at the same time
             self.assertIsInstance(GitHubCommand(*args), GitHubCommand)
 
 if __name__ == "__main__":
