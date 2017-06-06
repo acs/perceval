@@ -83,9 +83,9 @@ class GitHub(Backend):
         origin = base_url if base_url else GITHUB_URL
 
         if owner and repository:
-            origin = urljoin(origin, owner, repository)
+            origin = urijoin(origin, owner, repository)
         elif username:
-            origin = urljoin(origin, username)
+            origin = urijoin(origin, username)
         origin = urijoin(origin, owner, repository)
 
         super().__init__(origin, tag=tag, cache=cache)
@@ -440,6 +440,7 @@ class GitHubClient:
 
         logger.debug("Get GitHub items from " + url_next)
         r = self.__send_request(url_next, self.__get_payload(start, is_issues),
+                                self.__get_headers())
 
         issues = r.text
         page += 1
