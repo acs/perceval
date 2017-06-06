@@ -25,15 +25,15 @@ import logging
 
 import requests
 
+from grimoirelab.toolkit.datetime import datetime_to_utc, datetime_utcnow
+from grimoirelab.toolkit.uris import urijoin
+
 from ...backend import (Backend,
                         BackendCommand,
                         BackendCommandArgumentParser,
                         metadata)
 from ...errors import BaseError, CacheError
-from ...utils import (DEFAULT_DATETIME,
-                      datetime_to_utc,
-                      datetime_utcnow,
-                      urljoin)
+from ...utils import DEFAULT_DATETIME
 
 
 logger = logging.getLogger(__name__)
@@ -58,11 +58,11 @@ class Slack(Backend):
     :param tag: label used to mark the data
     :param cache: cache object to store raw data
     """
-    version = '0.1.0'
+    version = '0.2.1'
 
     def __init__(self, channel, api_token, max_items=MAX_ITEMS,
                  tag=None, cache=None):
-        origin = urljoin(SLACK_URL, channel)
+        origin = urijoin(SLACK_URL, channel)
 
         super().__init__(origin, tag=tag, cache=cache)
         self.channel = channel
@@ -85,6 +85,10 @@ class Slack(Backend):
                     self.channel, str(from_date))
 
         self._purge_cache_queue()
+
+        raw_info = self.client.channel_info(self.channel)
+        self._push_cache_queue(raw_info)
+        channel_info = self.parse_channel_info(raw_info)
 
         oldest = datetime_to_utc(from_date).timestamp()
         latest = datetime_utcnow().timestamp()
@@ -111,7 +115,9 @@ class Slack(Backend):
             self._push_cache_queue(raw_history)
 
             for message in messages:
-                message['user_data'] = self.__get_or_fetch_user(message['user'])
+                if 'user' in message:
+                    message['user_data'] = self.__get_or_fetch_user(message['user'])
+                message['channel_info'] = channel_info
                 yield message
 
                 nmsgs += 1
@@ -122,6 +128,10 @@ class Slack(Backend):
             # Checkpoint. A set of messages ends here.
             self._push_cache_queue('{}')
             self._flush_cache_queue()
+
+        # Checkpoint for batch. A batch ends here.
+        self._push_cache_queue('{END}')
+        self._flush_cache_queue()
 
         logger.info("Fetch process completed: %s message fetched", nmsgs)
 
@@ -146,15 +156,27 @@ class Slack(Backend):
 
         cache_items = self.cache.retrieve()
         cached_users = {}
+        channel_info = None
 
         nmsgs = 0
+        start_batch = True
 
         try:
             while True:
                 try:
-                    raw_history = next(cache_items)
+                    raw_json = next(cache_items)
                 except StopIteration:
                     break
+
+                if start_batch:
+                    channel_info = self.parse_channel_info(raw_json)
+                    start_batch = False
+                    continue
+                elif raw_json == '{END}':
+                    start_batch = True
+                    continue
+                else:
+                    raw_history = raw_json
 
                 checkpoint = False
 
@@ -170,7 +192,9 @@ class Slack(Backend):
                 messages, _ = self.parse_history(raw_history)
 
                 for message in messages:
-                    message['user_data'] = cached_users[message['user']]
+                    if 'user' in message:
+                        message['user_data'] = cached_users[message['user']]
+                    message['channel_info'] = channel_info
                     yield message
                     nmsgs += 1
         except StopIteration:
@@ -217,11 +241,13 @@ class Slack(Backend):
 
         This identifier will be the mix of two fields because Slack
         messages does not have any unique identifier. In this case,
-        'ts' and 'nick' values are combined because there have been
-        cases where two messages were sent by different users at
-        the same time.
+        'ts' and 'user' values (or 'bot_id' when the message is sent by a bot)
+        are combined because there have been cases where two messages were sent
+        by different users at the same time.
         """
-        return item['ts'] + item['user']
+        nick = item['user'] if 'user' in item else item['bot_id']
+
+        return item['ts'] + nick
 
     @staticmethod
     def metadata_updated_on(item):
@@ -246,6 +272,20 @@ class Slack(Backend):
         'message'.
         """
         return 'message'
+
+    @staticmethod
+    def parse_channel_info(raw_channel_info):
+        """Parse a channel info JSON stream.
+
+        This method parses a JSON stream, containing the information
+        from a channel, and returns a dict with the parsed data.
+
+        :param raw_channel_info
+
+        :returns: a dict with the parsed information about a channel
+        """
+        result = json.loads(raw_channel_info)
+        return result['channel']
 
     @staticmethod
     def parse_history(raw_history):
@@ -294,8 +334,9 @@ class SlackClient:
     :param api_key: key needed to use the API
     :param max_items: maximum number of items per request
     """
-    URL = urljoin(SLACK_URL, 'api', '%(resource)s')
+    URL = urijoin(SLACK_URL, 'api', '%(resource)s')
 
+    RCHANNEL_INFO = 'channels.info'
     RCHANNEL_HISTORY = 'channels.history'
     RUSER_INFO = 'users.info'
 
@@ -310,14 +351,27 @@ class SlackClient:
         self.api_token = api_token
         self.max_items = max_items
 
+    def channel_info(self, channel):
+        """Fetch information about a channel."""
+
+        resource = self.RCHANNEL_INFO
+
+        params = {
+            self.PCHANNEL: channel,
+        }
+
+        response = self._fetch(resource, params)
+
+        return response
+
     def history(self, channel, oldest=None, latest=None):
         """Fetch the history of a channel."""
 
         resource = self.RCHANNEL_HISTORY
 
         params = {
-            self.PCHANNEL : channel,
-            self.PCOUNT : self.max_items
+            self.PCHANNEL: channel,
+            self.PCOUNT: self.max_items
         }
 
         if oldest is not None:
@@ -335,7 +389,7 @@ class SlackClient:
         resource = self.RUSER_INFO
 
         params = {
-            self.PUSER : user_id
+            self.PUSER: user_id
         }
 
         response = self._fetch(resource, params)
@@ -349,7 +403,7 @@ class SlackClient:
         :param params: dict with the HTTP parameters needed to get
             the given resource
         """
-        url = self.URL % {'resource' : resource}
+        url = self.URL % {'resource': resource}
         params[self.PTOKEN] = self.api_token
 
         logger.debug("Slack client requests: %s params: %s",

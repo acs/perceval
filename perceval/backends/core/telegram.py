@@ -14,7 +14,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
-# Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA. 
+# Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA.
 #
 # Authors:
 #     Santiago Dueñas <sduenas@bitergia.com>
@@ -26,12 +26,13 @@ import logging
 
 import requests
 
+from grimoirelab.toolkit.uris import urijoin
+
 from ...backend import (Backend,
                         BackendCommand,
                         BackendCommandArgumentParser,
                         metadata)
 from ...errors import CacheError
-from ...utils import urljoin
 
 
 logger = logging.getLogger(__name__)
@@ -80,10 +81,10 @@ class Telegram(Backend):
     :param tag: label used to mark the data
     :param cache: cache object to store raw data
     """
-    version = '0.5.0'
+    version = '0.5.1'
 
     def __init__(self, bot, bot_token, tag=None, cache=None):
-        origin = urljoin(TELEGRAM_URL, bot)
+        origin = urijoin(TELEGRAM_URL, bot)
 
         super().__init__(origin, tag=tag, cache=cache)
         self.bot = bot
@@ -282,7 +283,7 @@ class TelegramCommand(BackendCommand):
         """Returns the Telegram argument parser."""
 
         aliases = {
-            'bot_token' : 'api_token'
+            'bot_token': 'api_token'
         }
         parser = BackendCommandArgumentParser(offset=True,
                                               token_auth=True,
@@ -349,7 +350,7 @@ class TelegramBotClient:
         :param params: dict with the HTTP parameters needed to retrieve
             the given resource
         """
-        url = self.API_URL % {'token' : self.bot_token, 'method' : method}
+        url = self.API_URL % {'token': self.bot_token, 'method': method}
 
         logger.debug("Telegram bot calls method: %s params: %s",
                      method, str(params))

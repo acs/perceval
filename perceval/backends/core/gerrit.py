@@ -14,7 +14,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
-# Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA. 
+# Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA.
 #
 # Authors:
 #     Alvaro del Castillo San Felix <acs@bitergia.com>
@@ -27,15 +27,17 @@ import re
 import subprocess
 import time
 
+from grimoirelab.toolkit.datetime import datetime_to_utc
+
 from ...backend import (Backend,
                         BackendCommand,
                         BackendCommandArgumentParser,
                         metadata)
 from ...errors import BackendError, CacheError
-from ...utils import DEFAULT_DATETIME, str_to_datetime, datetime_to_utc
+from ...utils import DEFAULT_DATETIME
 
 
-MAX_REVIEWS = 500 # Maximum number of reviews per query
+MAX_REVIEWS = 500  # Maximum number of reviews per query
 
 logger = logging.getLogger(__name__)
 
@@ -54,11 +56,12 @@ class Gerrit(Backend):
     :param tag: label used to mark the data
     :param cache: cache object to store raw data
     """
-    version = '0.7.0'
+    version = '0.7.3'
 
     def __init__(self, url,
                  user=None, max_reviews=MAX_REVIEWS,
                  blacklist_reviews=None,
+                 disable_host_key_check=False,
                  tag=None, cache=None):
         origin = url
 
@@ -67,7 +70,7 @@ class Gerrit(Backend):
         self.max_reviews = max(1, max_reviews)
         self.blacklist_reviews = blacklist_reviews
         self.client = GerritClient(self.url, user, max_reviews,
-                                   blacklist_reviews)
+                                   blacklist_reviews, disable_host_key_check)
 
     @metadata
     def fetch(self, from_date=DEFAULT_DATETIME):
@@ -201,7 +204,7 @@ class Gerrit(Backend):
         self._flush_cache_queue()
         reviews = self.parse_reviews(raw_data)
         logger.info("Received %i reviews in %.2fs" % (len(reviews),
-                                                       time.time()-task_init))
+                                                      time.time() - task_init))
         return reviews
 
     @classmethod
@@ -283,17 +286,45 @@ class GerritClient():
     CMD_GERRIT = 'gerrit'
     CMD_VERSION = 'version'
     PORT = '29418'
+    MAX_RETRIES = 3  # max number of retries when a command fails
+    RETRY_WAIT = 60  # number of seconds when retrying a ssh command
 
-    def __init__(self, repository, user, max_reviews, blacklist_reviews=[]):
+    def __init__(self, repository, user, max_reviews, blacklist_reviews=[],
+                 disable_host_key_check=False):
         self.gerrit_user = user
         self.max_reviews = max_reviews
         self.blacklist_reviews = blacklist_reviews
         self.repository = repository
         self.project = None
         self._version = None
-        self.gerrit_cmd = "ssh -p %s %s@%s" % (GerritClient.PORT, self.gerrit_user,
-                                               self.repository)
+        ssh_opts = ''
+        if disable_host_key_check:
+            ssh_opts += "-o StrictHostKeyChecking=no "
+
+        self.gerrit_cmd = "ssh %s -p %s %s@%s" % (ssh_opts, GerritClient.PORT,
+                                                  self.gerrit_user, self.repository)
         self.gerrit_cmd += " %s " % (GerritClient.CMD_GERRIT)
+
+    def __execute(self, cmd):
+        """ Execute gerrit command with retry if it fails """
+
+        data = None  # data result from the cmd execution
+
+        retries = 0
+
+        while retries < self.MAX_RETRIES:
+            try:
+                data = subprocess.check_output(cmd, shell=True)
+                break
+            except subprocess.CalledProcessError as ex:
+                logger.error("gerrit cmd %s failed: %s", cmd, ex)
+                time.sleep(self.RETRY_WAIT * retries)
+                retries += 1
+
+        if data is None:
+            raise RuntimeError(cmd + " failed " + str(self.MAX_RETRIES) + " times. Giving up!")
+
+        return data
 
     @property
     def version(self):
@@ -305,7 +336,7 @@ class GerritClient():
         cmd = self.gerrit_cmd + " %s " % (GerritClient.CMD_VERSION)
 
         logger.debug("Getting version: %s" % (cmd))
-        raw_data = subprocess.check_output(cmd, shell=True)
+        raw_data = self.__execute(cmd)
         raw_data = str(raw_data, "UTF-8")
         logger.debug("Gerrit version: %s" % (raw_data))
 
@@ -331,8 +362,8 @@ class GerritClient():
 
         cmd = self._get_gerrit_cmd(last_item, filter_)
 
-        logger.debug(cmd)
-        raw_data = subprocess.check_output(cmd, shell=True)
+        logger.debug("Getting reviews with command: %s", cmd)
+        raw_data = self.__execute(cmd)
         raw_data = str(raw_data, "UTF-8")
 
         return raw_data
@@ -361,13 +392,13 @@ class GerritClient():
 
     def _get_gerrit_cmd(self, last_item, filter_=None):
 
-        if filter_ and filter_ not in ['status:open','status:closed']:
+        if filter_ and filter_ not in ['status:open', 'status:closed']:
             cause = "Filter not supported in gerrit %s" % (filter_)
             raise BackendError(cause=cause)
 
         cmd = self.gerrit_cmd + " query "
         if self.project:
-            cmd += "project:"+self.project+" "
+            cmd += "project:" + self.project + " "
         cmd += "limit:" + str(self.max_reviews)
 
         if not filter_:
@@ -413,12 +444,14 @@ class GerritCommand(BackendCommand):
         group = parser.parser.add_argument_group('Gerrit arguments')
         group.add_argument('--user', dest='user',
                            help="Gerrit ssh user")
-        group.add_argument('--max-reviews',  dest='max_reviews',
+        group.add_argument('--max-reviews', dest='max_reviews',
                            type=int, default=MAX_REVIEWS,
                            help="Max number of reviews per ssh query.")
-        group.add_argument('--blacklist-reviews',  dest='blacklist_reviews',
+        group.add_argument('--blacklist-reviews', dest='blacklist_reviews',
                            nargs='*',
                            help="Wrong reviews that must not be retrieved.")
+        group.add_argument('--disable-host-key-check', dest='disable_host_key_check', action='store_true',
+                           help="Don't check remote host identity")
 
         # Required arguments
         parser.parser.add_argument('url',

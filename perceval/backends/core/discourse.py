@@ -27,15 +27,15 @@ import logging
 
 import requests
 
+from grimoirelab.toolkit.datetime import datetime_to_utc, str_to_datetime
+from grimoirelab.toolkit.uris import urijoin
+
 from ...backend import (Backend,
                         BackendCommand,
                         BackendCommandArgumentParser,
                         metadata)
 from ...errors import CacheError
-from ...utils import (DEFAULT_DATETIME,
-                      datetime_to_utc,
-                      str_to_datetime,
-                      urljoin)
+from ...utils import DEFAULT_DATETIME
 
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ class Discourse(Backend):
     :param tag: label used to mark the data
     :param cache: cache object to store raw data
     """
-    version = '0.5.0'
+    version = '0.5.1'
 
     def __init__(self, url, api_token=None,
                  tag=None, cache=None):
@@ -301,7 +301,7 @@ class DiscourseClient:
     :raises HTTPError: when an error occurs doing the request
     """
     # Static resources
-    ALL_TOPICS = None # Topics do not need a resource
+    ALL_TOPICS = None  # Topics do not need a resource
     TOPICS_SUMMARY = 'latest'
     TOPIC = 't'
     POSTS = 'posts'
@@ -323,8 +323,8 @@ class DiscourseClient:
         :param page: number of page to retrieve
         """
         params = {
-            self.PKEY  : self.api_key,
-            self.PPAGE : page
+            self.PKEY: self.api_key,
+            self.PPAGE: page
         }
 
         # http://example.com/latest.json
@@ -339,7 +339,7 @@ class DiscourseClient:
         :param topic_id: identifier of the topic to retrieve
         """
         params = {
-            self.PKEY  : self.api_key
+            self.PKEY: self.api_key
         }
 
         # http://example.com/t/8.json
@@ -354,7 +354,7 @@ class DiscourseClient:
         :param post_id: identifier of the post to retrieve
         """
         params = {
-            self.PKEY  : self.api_key
+            self.PKEY: self.api_key
         }
 
         # http://example.com/posts/10.json
@@ -372,9 +372,9 @@ class DiscourseClient:
             the given command
         """
         if res:
-            url = urljoin(self.url, res, res_id)
+            url = urijoin(self.url, res, res_id)
         else:
-            url = urljoin(self.url, res_id)
+            url = urijoin(self.url, res_id)
         url += self.TJSON
 
         logger.debug("Discourse client calls resource: %s %s params: %s",

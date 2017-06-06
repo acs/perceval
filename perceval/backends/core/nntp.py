@@ -27,12 +27,14 @@ import nntplib
 
 import email.parser
 
+from grimoirelab.toolkit.datetime import str_to_datetime
+
 from ...backend import (Backend,
                         BackendCommand,
                         BackendCommandArgumentParser,
                         metadata)
 from ...errors import CacheError, ParseError
-from ...utils import str_to_datetime, message_to_dict
+from ...utils import message_to_dict
 
 
 # Hack to avoid "line too long" errors
@@ -69,7 +71,7 @@ class NNTP(Backend):
     :param tag: label used to mark the data
     :param cache: cache object to store raw data
     """
-    version = '0.2.3'
+    version = '0.2.5'
 
     def __init__(self, host, group, tag=None, cache=None):
         origin = host + '-' + group
@@ -99,7 +101,7 @@ class NNTP(Backend):
 
         # Connect with the server and select the given group
         with nntplib.NNTP(self.host) as client:
-            _, _, first, last , _ = client.group(self.group)
+            _, _, first, last, _ = client.group(self.group)
 
             if offset <= last:
                 first = max(first, offset)
@@ -178,9 +180,9 @@ class NNTP(Backend):
 
         # Store data on the cache
         cache_data = {
-            'number' : info.number,
-            'message_id' : info.message_id,
-            'lines' : info.lines
+            'number': info.number,
+            'message_id': info.message_id,
+            'lines': info.lines
         }
         self._push_cache_queue(cache_data)
 
@@ -199,7 +201,7 @@ class NNTP(Backend):
         return article
 
     def __build_article(self, article, message_id, offset):
-        a = {k : v for k, v in article.items()}
+        a = {k: v for k, v in article.items()}
         a['message_id'] = message_id
         a['offset'] = offset
         return a
@@ -260,10 +262,15 @@ class NNTP(Backend):
 
         :param raw_article: NNTP article string
 
-        :returns : a dictionary of type `requests.structures.CaseInsensitiveDict`
+        :returns: a dictionary of type `requests.structures.CaseInsensitiveDict`
+
+        :raises ParseError: when an error is found parsing the article
         """
-        message = email.message_from_string(raw_article)
-        article = message_to_dict(message)
+        try:
+            message = email.message_from_string(raw_article)
+            article = message_to_dict(message)
+        except UnicodeEncodeError as e:
+            raise ParseError(cause=str(e))
         return article
 
 

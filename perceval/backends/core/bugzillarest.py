@@ -26,22 +26,23 @@ import logging
 
 import requests
 
+from grimoirelab.toolkit.datetime import datetime_to_utc, str_to_datetime
+from grimoirelab.toolkit.uris import urijoin
+
 from ...backend import (Backend,
                         BackendCommand,
                         BackendCommandArgumentParser,
                         metadata)
 from ...errors import BaseError, BackendError, CacheError
-from ...utils import (DEFAULT_DATETIME,
-                      datetime_to_utc,
-                      str_to_datetime,
-                      urljoin)
+from ...utils import DEFAULT_DATETIME
+from ..._version import __version__
 
 
 logger = logging.getLogger(__name__)
 
 
-MAX_BUGS = 500 # Maximum number of bugs per query
-MAX_CONTENTS = 25 # Maximum number of bug contents (history, comments) per query
+MAX_BUGS = 500  # Maximum number of bugs per query
+MAX_CONTENTS = 25  # Maximum number of bug contents (history, comments) per query
 
 
 class BugzillaREST(Backend):
@@ -60,7 +61,7 @@ class BugzillaREST(Backend):
     :param tag: label used to mark the data
     :param cache: cache object to store raw data
     """
-    version = '0.5.1'
+    version = '0.5.3'
 
     def __init__(self, url, user=None, password=None, api_token=None,
                  max_bugs=MAX_BUGS, tag=None, cache=None):
@@ -224,19 +225,19 @@ class BugzillaREST(Backend):
     @staticmethod
     def __parse_comments(raw_comments):
         contents = json.loads(raw_comments)['bugs']
-        comments = {k : v['comments'] for k, v in contents.items()}
+        comments = {k: v['comments'] for k, v in contents.items()}
         return comments
 
     @staticmethod
     def __parse_histories(raw_histories):
         contents = json.loads(raw_histories)['bugs']
-        history = {str(c['id']) : c['history'] for c in contents}
+        history = {str(c['id']): c['history'] for c in contents}
         return history
 
     @staticmethod
     def __parse_attachments(raw_attachments):
         contents = json.loads(raw_attachments)['bugs']
-        attachments = {k : v for k, v in contents.items()}
+        attachments = {k: v for k, v in contents.items()}
         return attachments
 
     @classmethod
@@ -315,6 +316,7 @@ class BugzillaRESTClient:
         client
     """
     URL = "%(base)s/rest/%(resource)s"
+    HEADERS = {'User-Agent': 'Perceval/' + __version__}
 
     # API resources
     RBUG = 'bug'
@@ -354,15 +356,15 @@ class BugzillaRESTClient:
         :param password: user password
         """
         params = {
-            self.PBUGZILLA_LOGIN : user,
-            self.PBUGZILLA_PASSWORD : password
+            self.PBUGZILLA_LOGIN: user,
+            self.PBUGZILLA_PASSWORD: password
         }
 
         try:
             r = self.call(self.RLOGIN, params)
         except requests.exceptions.HTTPError as e:
             cause = ("Bugzilla REST client could not authenticate user %s. "
-                "See exception: %s") % (user, str(e))
+                     "See exception: %s") % (user, str(e))
             raise BackendError(cause=cause)
 
         data = json.loads(r)
@@ -381,10 +383,10 @@ class BugzillaRESTClient:
         date = date.strftime("%Y-%m-%dT%H:%M:%SZ")
 
         params = {
-            self.PLAST_CHANGE_TIME : date,
-            self.PLIMIT : max_bugs,
-            self.PORDER : self.VCHANGE_DATE_ORDER,
-            self.PINCLUDE_FIELDS : self.VINCLUDE_ALL
+            self.PLAST_CHANGE_TIME: date,
+            self.PLIMIT: max_bugs,
+            self.PORDER: self.VCHANGE_DATE_ORDER,
+            self.PINCLUDE_FIELDS: self.VINCLUDE_ALL
         }
 
         if offset:
@@ -400,10 +402,10 @@ class BugzillaRESTClient:
         :param bug_ids: list of bug identifiers
         """
         # Hack. The first value must be a valid bug id
-        resource = urljoin(self.RBUG, bug_ids[0], self.RCOMMENT)
+        resource = urijoin(self.RBUG, bug_ids[0], self.RCOMMENT)
 
         params = {
-            self.PIDS : bug_ids
+            self.PIDS: bug_ids
         }
 
         response = self.call(resource, params)
@@ -415,10 +417,10 @@ class BugzillaRESTClient:
 
         :param bug_ids: list of bug identifiers
         """
-        resource = urljoin(self.RBUG, bug_ids[0], self.RHISTORY)
+        resource = urijoin(self.RBUG, bug_ids[0], self.RHISTORY)
 
         params = {
-            self.PIDS : bug_ids
+            self.PIDS: bug_ids
         }
 
         response = self.call(resource, params)
@@ -430,11 +432,11 @@ class BugzillaRESTClient:
 
         :param bug_id: list of bug identifiers
         """
-        resource = urljoin(self.RBUG, bug_ids[0], self.RATTACHMENT)
+        resource = urijoin(self.RBUG, bug_ids[0], self.RATTACHMENT)
 
         params = {
-            self.PIDS : bug_ids,
-            self.PEXCLUDE_FIELDS : self.VEXCLUDE_ATTCH_DATA
+            self.PIDS: bug_ids,
+            self.PEXCLUDE_FIELDS: self.VEXCLUDE_ATTCH_DATA
         }
 
         response = self.call(resource, params)
@@ -451,7 +453,7 @@ class BugzillaRESTClient:
         :raises BugzillaRESTError: raised when an error is returned by
             the server
         """
-        url = self.URL % {'base' : self.base_url, 'resource' : resource}
+        url = self.URL % {'base': self.base_url, 'resource': resource}
 
         if self.api_token:
             params[self.PBUGZILLA_TOKEN] = self.api_token
@@ -459,7 +461,8 @@ class BugzillaRESTClient:
         logger.debug("Bugzilla REST client requests: %s params: %s",
                      resource, str(params))
 
-        r = requests.get(url, params=params)
+        headers = self.HEADERS
+        r = requests.get(url, headers=headers, params=params)
         r.raise_for_status()
 
         # Check for possible Bugzilla API errors

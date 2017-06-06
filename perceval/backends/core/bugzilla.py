@@ -14,7 +14,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
-# Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA. 
+# Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA.
 #
 # Authors:
 #     Santiago Dueñas <sduenas@bitergia.com>
@@ -30,12 +30,15 @@ import bs4
 import dateutil.tz
 import requests
 
+from grimoirelab.toolkit.datetime import str_to_datetime
+
 from ...backend import (Backend,
                         BackendCommand,
                         BackendCommandArgumentParser,
                         metadata)
 from ...errors import BackendError, CacheError, ParseError
-from ...utils import DEFAULT_DATETIME, str_to_datetime, xml_to_dict
+from ...utils import DEFAULT_DATETIME, xml_to_dict
+from ..._version import __version__
 
 
 MAX_BUGS = 200  # Maximum number of bugs per query
@@ -59,7 +62,7 @@ class Bugzilla(Backend):
     :param tag: label used to mark the data
     :param cache: cache object to store raw data
     """
-    version = '0.6.0'
+    version = '0.6.2'
 
     def __init__(self, url, user=None, password=None,
                  max_bugs=MAX_BUGS, max_bugs_csv=MAX_BUGS_CSV,
@@ -360,11 +363,11 @@ class Bugzilla(Backend):
                 what = fields.pop(0)
                 removed = fields.pop(0)
                 added = fields.pop(0)
-                event = {'Who'     : format_text(who),
-                         'When'    : format_text(when),
-                         'What'    : format_text(what),
-                         'Removed' : format_text(removed),
-                         'Added'   : format_text(added)}
+                event = {'Who': format_text(who),
+                         'When': format_text(when),
+                         'What': format_text(what),
+                         'Removed': format_text(removed),
+                         'Added': format_text(added)}
                 yield event
 
 
@@ -416,7 +419,7 @@ class BugzillaClient:
         client
     """
     URL = "%(base)s/%(cgi)s"
-    HEADERS = {'User-Agent': 'perceval-bg-0.1'}
+    HEADERS = {'User-Agent': 'Perceval/' + __version__}
 
     # Regular expression to check the Bugzilla version
     VERSION_REGEX = re.compile(r'.+bugzilla version="([^"]+)"',
@@ -447,7 +450,6 @@ class BugzillaClient:
     CTYPE_CSV = 'csv'
     CTYPE_XML = 'xml'
 
-
     def __init__(self, base_url, user=None, password=None,
                  max_bugs_csv=MAX_BUGS_CSV):
         self.base_url = base_url
@@ -465,15 +467,15 @@ class BugzillaClient:
         :param user: Bugzilla user
         :param password: user password
         """
-        url = self.URL % {'base' : self.base_url, 'cgi' : self.CGI_LOGIN}
+        url = self.URL % {'base': self.base_url, 'cgi': self.CGI_LOGIN}
 
         payload = {
-            self.PBUGZILLA_LOGIN : user,
-            self.PBUGZILLA_PASSWORD : password,
-            self.PLOGIN : 'Log in'
+            self.PBUGZILLA_LOGIN: user,
+            self.PBUGZILLA_PASSWORD: password,
+            self.PLOGIN: 'Log in'
         }
 
-        headers = {'Referer' : self.base_url}
+        headers = {'Referer': self.base_url}
 
         req = self._session.post(url, data=payload, headers=headers)
         req.raise_for_status()
@@ -482,8 +484,8 @@ class BugzillaClient:
         # is found means that the authentication was successful
         if req.text.find("index.cgi?logout=1") < 0:
             cause = ("Bugzilla client could not authenticate user %s. "
-                "Please check user and password parameters. "
-                "URLs may also need a trailing '/'.") % user
+                     "Please check user and password parameters. "
+                     "URLs may also need a trailing '/'.") % user
             raise BackendError(cause=cause)
 
         logger.debug("Bugzilla user %s authenticated in %s",
@@ -493,7 +495,7 @@ class BugzillaClient:
         """Logout from the server."""
 
         params = {
-            self.PLOGOUT : '1'
+            self.PLOGOUT: '1'
         }
 
         self.call(self.CGI_LOGIN, params)
@@ -506,7 +508,7 @@ class BugzillaClient:
         """Get metadata information in XML format."""
 
         params = {
-            self.PCTYPE : self.CTYPE_XML
+            self.PCTYPE: self.CTYPE_XML
         }
 
         response = self.call(self.CGI_BUG, params)
@@ -529,10 +531,10 @@ class BugzillaClient:
         date = from_date.strftime("%Y-%m-%d %H:%M:%S")
 
         params = {
-            self.PCHFIELD_FROM : date,
-            self.PCTYPE : self.CTYPE_CSV,
-            self.PLIMIT : self.max_bugs_csv,
-            self.PORDER : order
+            self.PCHFIELD_FROM: date,
+            self.PCTYPE: self.CTYPE_CSV,
+            self.PLIMIT: self.max_bugs_csv,
+            self.PORDER: order
         }
 
         response = self.call(self.CGI_BUGLIST, params)
@@ -545,9 +547,9 @@ class BugzillaClient:
         :param bug_ids: list of bug identifiers
         """
         params = {
-            self.PBUG_ID : bug_ids,
-            self.PCTYPE : self.CTYPE_XML,
-            self.PEXCLUDE_FIELD : 'attachmentdata'
+            self.PBUG_ID: bug_ids,
+            self.PCTYPE: self.CTYPE_XML,
+            self.PEXCLUDE_FIELD: 'attachmentdata'
         }
 
         response = self.call(self.CGI_BUG, params)
@@ -560,7 +562,7 @@ class BugzillaClient:
         :param bug_id: bug identifier
         """
         params = {
-            self.PBUG_ID : bug_id
+            self.PBUG_ID: bug_id
         }
 
         response = self.call(self.CGI_BUG_ACTIVITY, params)
@@ -574,7 +576,7 @@ class BugzillaClient:
         :param params: dict with the HTTP parameters needed to run
             the given command
         """
-        url = self.URL % {'base' : self.base_url, 'cgi' : cgi}
+        url = self.URL % {'base': self.base_url, 'cgi': cgi}
 
         logger.debug("Bugzilla client calls command: %s params: %s",
                      cgi, str(params))

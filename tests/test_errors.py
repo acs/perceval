@@ -15,7 +15,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
-# Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA. 
+# Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA.
 #
 # Authors:
 #     Santiago Dueñas <sduenas@bitergia.com>
@@ -23,7 +23,7 @@
 
 import sys
 
-if not '..' in sys.path:
+if '..' not in sys.path:
     sys.path.insert(0, '..')
 
 import unittest
@@ -64,7 +64,7 @@ class TestBaseError(unittest.TestCase):
 
         When this happens, it raises a KeyError exception.
         """
-        kwargs = {'code' : 1, 'error' : 'Fatal error'}
+        kwargs = {'code': 1, 'error': 'Fatal error'}
         self.assertRaises(KeyError, MockErrorArgs, **kwargs)
 
 
@@ -86,16 +86,6 @@ class TestCacheError(unittest.TestCase):
         self.assertEqual('invalid cache', str(e))
 
 
-class TestInvalidDateError(unittest.TestCase):
-
-    def test_message(self):
-        """Make sure that prints the correct error"""
-
-        e = errors.InvalidDateError(date='1900-13-01')
-        self.assertEqual('1900-13-01 is not a valid date',
-                         str(e))
-
-
 class TestRepositoryError(unittest.TestCase):
 
     def test_message(self):
@@ -103,6 +93,24 @@ class TestRepositoryError(unittest.TestCase):
 
         e = errors.RepositoryError(cause='error cloning repository')
         self.assertEqual('error cloning repository', str(e))
+
+
+class TestRateLimitError(unittest.TestCase):
+
+    def test_message(self):
+        """Make sure that prints the correct error"""
+
+        e = errors.RateLimitError(cause="client rate exhausted",
+                                  seconds_to_reset=10)
+        self.assertEqual("client rate exhausted; 10 seconds to rate reset",
+                         str(e))
+
+    def test_seconds_to_reset_property(self):
+        """Test property"""
+
+        e = errors.RateLimitError(cause="client rate exhausted",
+                                  seconds_to_reset=10)
+        self.assertEqual(e.seconds_to_reset, 10)
 
 
 class TestParseError(unittest.TestCase):

@@ -20,21 +20,19 @@
 #     Alvaro del Castillo <acs@bitergia.com>
 #
 
-import json
 import logging
 
 import feedparser
 import requests
+
+from grimoirelab.toolkit.datetime import str_to_datetime
 
 from ...backend import (Backend,
                         BackendCommand,
                         BackendCommandArgumentParser,
                         metadata)
 from ...errors import CacheError
-from ...utils import (DEFAULT_DATETIME,
-                      datetime_to_utc,
-                      str_to_datetime,
-                      urljoin)
+from ..._version import __version__
 
 
 logger = logging.getLogger(__name__)
@@ -51,7 +49,7 @@ class RSS(Backend):
     :param tag: label used to mark the data
     :param cache: cache object to store raw data
     """
-    version = '0.1.0'
+    version = '0.1.2'
 
     def __init__(self, url, tag=None, cache=None):
         origin = url
@@ -170,7 +168,10 @@ class RSSClient:
     def get_entries(self):
         """ Retrieve all entries from a RSS feed"""
 
-        req = requests.get(self.url)
+        # wordpress.com blogs need a User-Agent header
+        headers = {'User-Agent': 'perceval-' + __version__}
+
+        req = requests.get(self.url, headers=headers)
         req.raise_for_status()
         return req.text
 

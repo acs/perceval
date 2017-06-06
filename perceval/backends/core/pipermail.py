@@ -31,11 +31,12 @@ import bs4
 import dateutil
 import requests
 
+from grimoirelab.toolkit.datetime import datetime_to_utc
+from grimoirelab.toolkit.uris import urijoin
+
 from .mbox import MBox, MailingList
 from ...backend import BackendCommand, BackendCommandArgumentParser, metadata
-from ...utils import (DEFAULT_DATETIME,
-                      datetime_to_utc,
-                      urljoin)
+from ...utils import DEFAULT_DATETIME
 
 
 logger = logging.getLogger(__name__)
@@ -63,7 +64,7 @@ class Pipermail(MBox):
     :param tag: label used to mark the data
     :param cache: cache object to store raw data
     """
-    version = '0.4.2'
+    version = '0.4.3'
 
     def __init__(self, url, dirpath, tag=None, cache=None):
         super().__init__(url, dirpath, tag=tag, cache=cache)
@@ -198,9 +199,9 @@ class PipermailList(MailingList):
 
             mbox_dt = self._parse_date_from_filepath(filename)
 
-            if (from_date.year == mbox_dt.year and \
-                from_date.month == mbox_dt.month) or \
-                from_date < mbox_dt:
+            if ((from_date.year == mbox_dt.year and
+                from_date.month == mbox_dt.month) or
+                from_date < mbox_dt):
 
                 filepath = os.path.join(self.dirpath, filename)
                 success = self._download_archive(l, filepath)
@@ -248,7 +249,7 @@ class PipermailList(MailingList):
             ext2 = os.path.splitext(candidate.rstrip(ext1))[-1]
 
             if ext1 in PIPERMAIL_TYPES or ext2 in PIPERMAIL_TYPES:
-                links.append(urljoin(self.url, candidate))
+                links.append(urijoin(self.url, candidate))
             else:
                 logger.debug("Ignoring %s archive because its extension was not recognized",
                              candidate)

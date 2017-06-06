@@ -14,7 +14,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
-# Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA. 
+# Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA.
 #
 # Authors:
 #     Santiago Dueñas <sduenas@bitergia.com>
@@ -25,15 +25,15 @@ import json
 
 import requests
 
+from grimoirelab.toolkit.datetime import datetime_to_utc, str_to_datetime
+from grimoirelab.toolkit.uris import urijoin
+
 from ...backend import (Backend,
                         BackendCommand,
                         BackendCommandArgumentParser,
                         metadata)
 from ...errors import CacheError
-from ...utils import (DEFAULT_DATETIME,
-                      datetime_to_utc,
-                      str_to_datetime,
-                      urljoin)
+from ...utils import DEFAULT_DATETIME
 
 
 logger = logging.getLogger(__name__)
@@ -54,7 +54,7 @@ class Confluence(Backend):
     :param tag: label used to mark the data
     :param cache: cache object to store raw data
     """
-    version = '0.4.0'
+    version = '0.5.1'
 
     def __init__(self, url, tag=None, cache=None):
         origin = url
@@ -91,16 +91,22 @@ class Confluence(Backend):
         nhcs = 0
 
         contents = self.__fetch_contents_summary(from_date)
-        cids = [content['id'] for content in contents]
+        contents = [content for content in contents]
+        self._push_cache_queue('{}')
 
-        for cid in cids:
+        for content in contents:
+            cid = content['id']
+            content_url = urijoin(self.origin, content['_links']['webui'])
+
             hcs = self.__fetch_historical_contents(cid, from_date)
 
             for hc in hcs:
+                hc['content_url'] = content_url
                 yield hc
                 nhcs += 1
 
-            self._flush_cache_queue()
+        self._push_cache_queue('END')
+        self._flush_cache_queue()
 
         logger.info("Fetch process completed: %s historical contents fetched",
                     nhcs)
@@ -123,17 +129,32 @@ class Confluence(Backend):
 
         nhcs = 0
 
-        for raw_json in cache_items:
-            hc = self.parse_historical_content(raw_json)
-            nhcs += 1
-            yield hc
+        checkpoint = False
+        contents = {}
 
+        for raw_json in cache_items:
+            if raw_json == '{}':
+                checkpoint = True
+                continue
+            elif raw_json == 'END':
+                checkpoint = False
+                contents = {}
+                continue
+            elif not checkpoint:
+                for cs in self.parse_contents_summary(raw_json):
+                    contents[cs['id']] = urijoin(self.origin, cs['_links']['webui'])
+            else:
+                hc = self.parse_historical_content(raw_json)
+                hc['content_url'] = contents[hc['id']]
+                nhcs += 1
+                yield hc
         logger.info("Retrieval process completed: %s historical contents retrieved from cache",
                     nhcs)
 
     def __fetch_contents_summary(self, from_date):
         logger.debug("Fetching contents summary from %s", str(from_date))
         for page in self.client.contents(from_date=from_date):
+            self._push_cache_queue(page)
             for cs in self.parse_contents_summary(page):
                 yield cs
 
@@ -336,12 +357,12 @@ class ConfluenceClient:
 
         # Set confluence query parameter (cql)
         date = from_date.strftime("%Y-%m-%d %H:%M")
-        cql = self.VCQL % {'date' : date}
+        cql = self.VCQL % {'date': date}
 
         # Set parameters
         params = {
-            self.PCQL : cql,
-            self.PLIMIT : max_contents
+            self.PCQL: cql,
+            self.PLIMIT: max_contents
         }
 
         if offset:
@@ -359,9 +380,9 @@ class ConfluenceClient:
         resource = self.RCONTENTS + '/' + str(content_id)
 
         params = {
-            self.PVERSION : version,
-            self.PSTATUS : self.VHISTORICAL,
-            self.PEXPAND : ','.join(self.VEXPAND)
+            self.PVERSION: version,
+            self.PSTATUS: self.VHISTORICAL,
+            self.PEXPAND: ','.join(self.VEXPAND)
         }
 
         # Only one item is returned
@@ -375,7 +396,7 @@ class ConfluenceClient:
         :param params: dict with the HTTP parameters needed to retrieve
             the given resource
         """
-        url = self.URL % {'base' : self.base_url, 'resource' : resource}
+        url = self.URL % {'base': self.base_url, 'resource': resource}
 
         logger.debug("Confluence client requests: %s params: %s",
                      resource, str(params))
@@ -387,10 +408,10 @@ class ConfluenceClient:
 
             # Pagination is available when 'next' link exists
             j = r.json()
-            if not '_links' in j:
+            if '_links' not in j:
                 break
-            if not 'next' in j['_links']:
+            if 'next' not in j['_links']:
                 break
 
-            url = urljoin(self.base_url, j['_links']['next'])
+            url = urijoin(self.base_url, j['_links']['next'])
             params = {}

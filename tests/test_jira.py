@@ -15,7 +15,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
-# Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA. 
+# Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA.
 #
 # Authors:
 #     Alberto Martín <alberto.martin@bitergia.com>
@@ -31,6 +31,8 @@ import tempfile
 import httpretty
 import pkg_resources
 
+from grimoirelab.toolkit.datetime import str_to_datetime
+
 # Hack to make sure that tests import the right packages
 # due to setuptools behaviour
 sys.path.insert(0, '..')
@@ -39,7 +41,7 @@ pkg_resources.declare_namespace('perceval.backends')
 from perceval.backend import BackendCommandArgumentParser
 from perceval.cache import Cache
 from perceval.errors import CacheError
-from perceval.utils import DEFAULT_DATETIME, str_to_datetime
+from perceval.utils import DEFAULT_DATETIME
 from perceval.backends.core.jira import (Jira,
                                          JiraClient,
                                          JiraCommand,
@@ -187,7 +189,7 @@ class TestJiraBackend(unittest.TestCase):
 
         httpretty.register_uri(httpretty.GET,
                                JIRA_SEARCH_URL,
-                               responses=[httpretty.Response(body=request_callback) \
+                               responses=[httpretty.Response(body=request_callback)
                                           for _ in range(2)])
 
         httpretty.register_uri(httpretty.GET,
@@ -202,16 +204,18 @@ class TestJiraBackend(unittest.TestCase):
 
         custom_fields = filter_custom_fields(body_json)
 
-        expected_req = [{
-                            'expand': ['renderedFields,transitions,operations,changelog'],
-                            'jql': ['updated > 0 order by updated asc'],
-                            'startAt': ['0']
-                        },
-                        {
-                            'expand': ['renderedFields,transitions,operations,changelog'],
-                            'jql': ['updated > 0 order by updated asc'],
-                            'startAt': ['2']
-                        }]
+        expected_req = [
+            {
+                'expand': ['renderedFields,transitions,operations,changelog'],
+                'jql': ['updated > 0 order by updated asc'],
+                'startAt': ['0']
+            },
+            {
+                'expand': ['renderedFields,transitions,operations,changelog'],
+                'jql': ['updated > 0 order by updated asc'],
+                'startAt': ['2']
+            }
+        ]
 
         for i in range(len(expected_req)):
             self.assertEqual(requests[i].method, 'GET')
@@ -226,7 +230,7 @@ class TestJiraBackend(unittest.TestCase):
         self.assertEqual(issues[0]['category'], 'issue')
         self.assertEqual(issues[0]['tag'], 'http://example.com')
         self.assertEqual(issues[0]['data']['key'], 'HELP-6043')
-        self.assertEqual(issues[0]['data']['fields']['issuetype']['name'],  'extRequest')
+        self.assertEqual(issues[0]['data']['fields']['issuetype']['name'], 'extRequest')
         self.assertEqual(issues[0]['data']['fields']['creator']['name'], 'user2')
         self.assertEqual(issues[0]['data']['fields']['assignee']['name'], 'user1')
         self.assertEqual(issues[0]['data']['fields']['assignee']['name'], 'user1')
@@ -255,7 +259,7 @@ class TestJiraBackend(unittest.TestCase):
         self.assertEqual(issues[1]['category'], 'issue')
         self.assertEqual(issues[1]['tag'], 'http://example.com')
         self.assertEqual(issues[1]['data']['key'], 'HELP-6042')
-        self.assertEqual(issues[1]['data']['fields']['issuetype']['name'],  'extRequest')
+        self.assertEqual(issues[1]['data']['fields']['issuetype']['name'], 'extRequest')
         self.assertEqual(issues[1]['data']['fields']['creator']['name'], 'user2')
         self.assertEqual(issues[1]['data']['fields']['assignee']['name'], 'user1')
         self.assertEqual(issues[1]['data']['fields']['customfield_10301']['id'],
@@ -281,7 +285,7 @@ class TestJiraBackend(unittest.TestCase):
         self.assertEqual(issues[2]['category'], 'issue')
         self.assertEqual(issues[2]['tag'], 'http://example.com')
         self.assertEqual(issues[2]['data']['key'], 'HELP-6041')
-        self.assertEqual(issues[2]['data']['fields']['issuetype']['name'],  'extRequest')
+        self.assertEqual(issues[2]['data']['fields']['issuetype']['name'], 'extRequest')
         self.assertEqual(issues[2]['data']['fields']['creator']['name'], 'user2')
         self.assertEqual(issues[2]['data']['fields']['assignee']['name'], 'user3')
         self.assertEqual(issues[2]['data']['fields']['customfield_10301']['id'],
@@ -324,10 +328,10 @@ class TestJiraBackend(unittest.TestCase):
         issues = [issue for issue in jira.fetch(from_date)]
 
         expected_req = {
-                            'expand': ['renderedFields,transitions,operations,changelog'],
-                            'jql': ['updated > 1420070400000 order by updated asc'],
-                            'startAt': ['0']
-                        }
+            'expand': ['renderedFields,transitions,operations,changelog'],
+            'jql': ['updated > 1420070400000 order by updated asc'],
+            'startAt': ['0']
+        }
 
         self.assertEqual(len(issues), 1)
 
@@ -363,10 +367,10 @@ class TestJiraBackend(unittest.TestCase):
         issues = [issue for issue in jira.fetch()]
 
         expected_req = {
-                            'expand': ['renderedFields,transitions,operations,changelog'],
-                            'jql': ['updated > 0 order by updated asc'],
-                            'startAt': ['0']
-                        }
+            'expand': ['renderedFields,transitions,operations,changelog'],
+            'jql': ['updated > 0 order by updated asc'],
+            'startAt': ['0']
+        }
 
         self.assertEqual(len(issues), 0)
 
@@ -403,7 +407,7 @@ class TestJiraBackendCache(unittest.TestCase):
 
         httpretty.register_uri(httpretty.GET,
                                JIRA_SEARCH_URL,
-                               responses=[httpretty.Response(body=request_callback) \
+                               responses=[httpretty.Response(body=request_callback)
                                           for _ in range(2)])
         httpretty.register_uri(httpretty.GET,
                                JIRA_FIELDS_URL,
@@ -422,16 +426,18 @@ class TestJiraBackendCache(unittest.TestCase):
         # any new request to the server
         cache_issues = [cache_issue for cache_issue in jira.fetch_from_cache()]
 
-        expected_req = [{
-                            'expand': ['renderedFields,transitions,operations,changelog'],
-                            'jql': ['updated > 0 order by updated asc'],
-                            'startAt': ['0']
-                        },
-                        {
-                            'expand': ['renderedFields,transitions,operations,changelog'],
-                            'jql': ['updated > 0 order by updated asc'],
-                            'startAt': ['2']
-                        }]
+        expected_req = [
+            {
+                'expand': ['renderedFields,transitions,operations,changelog'],
+                'jql': ['updated > 0 order by updated asc'],
+                'startAt': ['0']
+            },
+            {
+                'expand': ['renderedFields,transitions,operations,changelog'],
+                'jql': ['updated > 0 order by updated asc'],
+                'startAt': ['2']
+            }
+        ]
 
         for i in range(len(expected_req)):
             self.assertEqual(requests[i].method, 'GET')
@@ -546,7 +552,7 @@ class TestJiraClient(unittest.TestCase):
 
         httpretty.register_uri(httpretty.GET,
                                JIRA_SEARCH_URL,
-                               responses=[httpretty.Response(body=request_callback) \
+                               responses=[httpretty.Response(body=request_callback)
                                           for _ in range(2)])
 
         client = JiraClient(url='http://example.com', project='perceval',
@@ -555,18 +561,20 @@ class TestJiraClient(unittest.TestCase):
 
         pages = [page for page in client.get_issues(from_date)]
 
-        expected_req = [{
-                            'expand': ['renderedFields,transitions,operations,changelog'],
-                            'jql': ['project = perceval AND updated > 1420070400000 order by updated asc'],
-                            'maxResults': ['2'],
-                            'startAt': ['0']
-                        },
-                        {
-                            'expand': ['renderedFields,transitions,operations,changelog'],
-                            'jql': ['project = perceval AND updated > 1420070400000 order by updated asc'],
-                            'maxResults': ['2'],
-                            'startAt': ['2']
-                       }]
+        expected_req = [
+            {
+                'expand': ['renderedFields,transitions,operations,changelog'],
+                'jql': ['project = perceval AND updated > 1420070400000 order by updated asc'],
+                'maxResults': ['2'],
+                'startAt': ['0']
+            },
+            {
+                'expand': ['renderedFields,transitions,operations,changelog'],
+                'jql': ['project = perceval AND updated > 1420070400000 order by updated asc'],
+                'maxResults': ['2'],
+                'startAt': ['2']
+            }
+        ]
 
         self.assertEqual(len(pages), 2)
 
@@ -621,11 +629,11 @@ class TestJiraClient(unittest.TestCase):
         pages = [page for page in client.get_issues(from_date)]
 
         expected_req = {
-                            'expand': ['renderedFields,transitions,operations,changelog'],
-                            'jql': ['project = perceval AND updated > 1420070400000 order by updated asc'],
-                            'maxResults': ['1'],
-                            'startAt': ['0']
-                        }
+            'expand': ['renderedFields,transitions,operations,changelog'],
+            'jql': ['project = perceval AND updated > 1420070400000 order by updated asc'],
+            'maxResults': ['1'],
+            'startAt': ['0']
+        }
 
         self.assertEqual(len(pages), 1)
 

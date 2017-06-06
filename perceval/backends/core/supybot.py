@@ -14,7 +14,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
-# Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA. 
+# Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA.
 #
 # Authors:
 #     Santiago Dueñas <sduenas@bitergia.com>
@@ -27,14 +27,14 @@ import re
 
 import dateutil
 
+from grimoirelab.toolkit.datetime import datetime_to_utc, str_to_datetime
+
 from ...backend import (Backend,
                         BackendCommand,
                         BackendCommandArgumentParser,
                         metadata)
 from ...errors import ParseError
-from ...utils import (DEFAULT_DATETIME,
-                      datetime_to_utc,
-                      str_to_datetime)
+from ...utils import DEFAULT_DATETIME
 
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ class Supybot(Backend):
     :param tag: label used to mark the data
     :param cache: cache object to store raw data
     """
-    version = '0.5.0'
+    version = '0.5.2'
 
     def __init__(self, uri, dirpath, tag=None, cache=None):
         origin = uri
@@ -228,8 +228,12 @@ class Supybot(Backend):
                   newline=os.linesep) as f:
             parser = SupybotParser(f)
 
-            for message in parser.parse():
-                yield message
+            try:
+                for message in parser.parse():
+                    yield message
+            except ParseError as e:
+                cause = "file: %s; reason: %s" % (filepath, str(e))
+                raise ParseError(cause=cause)
 
 
 class SupybotCommand(BackendCommand):
@@ -242,7 +246,7 @@ class SupybotCommand(BackendCommand):
         """Returns the Supybot argument parser."""
 
         aliases = {
-            'dirpath' : 'ircdir'
+            'dirpath': 'ircdir'
         }
         parser = BackendCommandArgumentParser(from_date=True,
                                               aliases=aliases)
@@ -379,8 +383,8 @@ class SupybotParser:
 
     def _build_item(self, ts, itype, nick, body):
         return {
-                'timestamp' : ts,
-                'type' : itype,
-                'nick' : nick,
-                'body' : body
-               }
+            'timestamp': ts,
+            'type': itype,
+            'nick': nick,
+            'body': body
+        }

@@ -28,11 +28,15 @@ import re
 import bs4
 import requests
 
+from grimoirelab.toolkit.datetime import datetime_to_utc, str_to_datetime
+from grimoirelab.toolkit.uris import urijoin
+
 from ...backend import (Backend,
                         BackendCommand,
                         BackendCommandArgumentParser,
                         metadata)
-from ...utils import urljoin, DEFAULT_DATETIME, str_to_datetime, datetime_to_utc
+from ...utils import DEFAULT_DATETIME
+
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +51,7 @@ class Askbot(Backend):
     :param url: Askbot site URL
     :param tag: label used to mark the data
     """
-    version = '0.2.0'
+    version = '0.2.3'
 
     def __init__(self, url, tag=None):
         origin = url
@@ -240,10 +244,12 @@ class AskbotClient:
     HTML_QUESTION = 'question/'
     ORDER_API = 'activity-asc'
     ORDER_HTML = 'votes'
-    COMMENTS = 'post_comments'
+    COMMENTS = 's/post_comments'
+    COMMENTS_OLD = 'post_comments'
 
     def __init__(self, base_url):
         self.base_url = base_url
+        self._use_new_urls = True
 
     def get_api_questions(self, page=1):
         """Retrieve a question page using the API.
@@ -252,9 +258,9 @@ class AskbotClient:
         """
         path = self.API_QUESTIONS
         params = {
-                    'page': page,
-                    'sort': self.ORDER_API
-                 }
+            'page': page,
+            'sort': self.ORDER_API
+        }
         response = self.__call(path, params)
         return response
 
@@ -264,11 +270,11 @@ class AskbotClient:
         :param question_id: question identifier
         :param page: page to retrieve
         """
-        path = urljoin(self.HTML_QUESTION, question_id)
+        path = urijoin(self.HTML_QUESTION, question_id)
         params = {
-                    'page': page,
-                    'sort': self.ORDER_HTML
-                 }
+            'page': page,
+            'sort': self.ORDER_HTML
+        }
         response = self.__call(path, params)
         return response
 
@@ -277,14 +283,25 @@ class AskbotClient:
 
         :param object_id: object identifiere
         """
-        path = self.COMMENTS
+        path = self.COMMENTS if self._use_new_urls else self.COMMENTS_OLD
         params = {
-                    'post_id': post_id,
-                    'post_type': 'answer',
-                    'avatar_size': 0
-                 }
+            'post_id': post_id,
+            'post_type': 'answer',
+            'avatar_size': 0
+        }
         headers = {'X-Requested-With': 'XMLHttpRequest'}
-        response = self.__call(path, params, headers)
+
+        try:
+            response = self.__call(path, params, headers)
+        except requests.exceptions.HTTPError as ex:
+            if ex.response.status_code == 404:
+                logger.debug("Comments URL did not work. Using old URL schema.")
+                self._use_new_urls = False
+                path = self.COMMENTS_OLD
+                response = self.__call(path, params, headers)
+            else:
+                raise ex
+
         return response
 
     def __call(self, path, params=None, headers=None):
@@ -296,7 +313,7 @@ class AskbotClient:
         :param headers: headers to use in the request
         """
 
-        url = urljoin(self.base_url, path)
+        url = urijoin(self.base_url, path)
 
         req = requests.get(url, params=params, headers=headers)
         req.raise_for_status()

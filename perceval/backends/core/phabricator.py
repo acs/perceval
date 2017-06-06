@@ -26,13 +26,14 @@ import time
 
 import requests
 
+from grimoirelab.toolkit.datetime import datetime_to_utc
+
 from ...backend import (Backend,
                         BackendCommand,
                         BackendCommandArgumentParser,
                         metadata)
 from ...errors import BaseError, CacheError
-from ...utils import DEFAULT_DATETIME, datetime_to_utc, str_to_datetime
-
+from ...utils import DEFAULT_DATETIME
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ class Phabricator(Backend):
     :param tag: label used to mark the data
     :param cache: cache object to store raw data
     """
-    version = '0.5.2'
+    version = '0.5.3'
 
     def __init__(self, url, api_token, tag=None, cache=None):
         origin = url
@@ -150,7 +151,7 @@ class Phabricator(Backend):
                 self._push_cache_queue('{ENDUSERS}')
 
                 project_ids = task['attachments']['projects']['projectPHIDs']
-                task_projects = [self.__get_or_fetch_project(project_id) \
+                task_projects = [self.__get_or_fetch_project(project_id)
                                  for project_id in project_ids]
 
                 # Projects checkpoint
@@ -335,7 +336,7 @@ class Phabricator(Backend):
 
             # Build tasks projects
             projects_ids = task['attachments']['projects']['projectPHIDs']
-            task_projects = [cached_projects[project_id] \
+            task_projects = [cached_projects[project_id]
                              for project_id in projects_ids]
 
             task['transactions'] = task_trans
@@ -527,17 +528,17 @@ class ConduitClient:
         ts = int(datetime_to_utc(from_date).timestamp()) or 1
 
         consts = {
-            self.PMODIFIED_START : ts
+            self.PMODIFIED_START: ts
         }
 
         attachments = {
-            self. PPROJECTS : True
+            self. PPROJECTS: True
         }
 
         params = {
-            self.PCONSTRAINTS : consts,
-            self.PATTACHMENTS : attachments,
-            self.PORDER : self.VOUTDATED,
+            self.PCONSTRAINTS: consts,
+            self.PATTACHMENTS: attachments,
+            self.PORDER: self.VOUTDATED,
         }
 
         while True:
@@ -555,7 +556,7 @@ class ConduitClient:
         :param phids: list of tasks identifiers
         """
         params = {
-            self.PIDS : phids
+            self.PIDS: phids
         }
 
         response = self._call(self.MANIPHEST_TRANSACTIONS, params)
@@ -568,7 +569,7 @@ class ConduitClient:
         :params phids: list of users identifiers
         """
         params = {
-            self.PHIDS : phids
+            self.PHIDS: phids
         }
 
         response = self._call(self.PHAB_USERS, params)
@@ -581,7 +582,7 @@ class ConduitClient:
         :params phids: list of PHIDs
         """
         params = {
-            self.PHIDS : phids
+            self.PHIDS: phids
         }
 
         response = self._call(self.PHAB_PHIDS, params)
@@ -597,15 +598,15 @@ class ConduitClient:
 
         :raises ConduitError: when an error is returned by the server
         """
-        url = self.URL % {'base' : self.base_url, 'method' : method}
+        url = self.URL % {'base': self.base_url, 'method': method}
 
         # Conduit and POST parameters
-        params['__conduit__'] = {'token' : self.api_token}
+        params['__conduit__'] = {'token': self.api_token}
 
         data = {
-            'params' : json.dumps(params),
-            'output' : 'json',
-            '__conduit__' : True
+            'params': json.dumps(params),
+            'output': 'json',
+            '__conduit__': True
         }
 
         logger.debug("Phabricator Conduit client requests: %s params: %s",

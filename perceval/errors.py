@@ -14,11 +14,12 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
-# Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA. 
+# Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA.
 #
 # Authors:
 #     Santiago Dueñas <sduenas@bitergia.com>
 #
+
 
 class BaseError(Exception):
     """Base class for Perceval exceptions.
@@ -48,16 +49,24 @@ class CacheError(BaseError):
     message = "%(cause)s"
 
 
-class InvalidDateError(BaseError):
-    """Exception raised when a date is invalid"""
-
-    message = "%(date)s is not a valid date"
-
-
 class RepositoryError(BaseError):
     """Generic error for repositories"""
 
     message = "%(cause)s"
+
+
+class RateLimitError(BaseError):
+    """Exception raised when the rate limit is exceeded"""
+
+    message = "%(cause)s; %(seconds_to_reset)s seconds to rate reset"
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._seconds_to_reset = kwargs['seconds_to_reset']
+
+    @property
+    def seconds_to_reset(self):
+        return self._seconds_to_reset
 
 
 class ParseError(BaseError):

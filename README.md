@@ -15,6 +15,7 @@ are:
     bugzillarest     Fetch bugs from a Bugzilla server (>=5.0) using its REST API
     confluence       Fetch contents from a Confluence server
     discourse        Fetch posts from Discourse site
+    dockerhub        Fetch repository data from Docker Hub site
     gerrit           Fetch reviews from a Gerrit server
     git              Fetch commits from Git
     github           Fetch issues from GitHub
@@ -52,6 +53,7 @@ Run 'perceval <backend> --help' to get information about a specific backend.
 * python3-requests >= 2.7
 * python3-bs4 (beautifulsoup4) >= 4.3
 * python3-feedparser >= 5.1.3
+* grimoirelab-toolkit >= 0.1.0
 
 ## Installation
 
@@ -127,6 +129,11 @@ $ perceval confluence 'https://wiki.opnfv.org/' --from-date '2016-01-01'
 $ perceval discourse 'https://foro.mozilla-hispano.org/' --from-date '2016-01-01'
 ```
 
+### Docker Hub
+```
+$ perceval dockerhub grimoirelab perceval
+```
+
 ### Gerrit
 To run gerrit, you will need an authorized SSH private key:
 
@@ -171,7 +178,7 @@ $ perceval git '/tmp/gitlog.log'
 
 ### GitHub
 ```
-$ perceval github --owner elastic --repository filebeat --from-date '2016-01-01'
+$ perceval github elastic logstash --from-date '2016-01-01'
 ```
 
 ### Gmane

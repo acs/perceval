@@ -28,15 +28,15 @@ import time
 
 import requests
 
+from grimoirelab.toolkit.datetime import datetime_to_utc, str_to_datetime
+from grimoirelab.toolkit.uris import urijoin
+
 from ...backend import (Backend,
                         BackendCommand,
                         BackendCommandArgumentParser,
                         metadata)
-from ...errors import CacheError, BaseError
-from ...utils import (DEFAULT_DATETIME,
-                      datetime_to_utc,
-                      str_to_datetime,
-                      urljoin)
+from ...errors import CacheError, RateLimitError
+from ...utils import DEFAULT_DATETIME
 
 
 GITHUB_URL = "https://github.com/"
@@ -48,19 +48,6 @@ MAX_RATE_LIMIT = 500
 
 
 logger = logging.getLogger(__name__)
-
-
-class RateLimitError(BaseError):
-
-    message = "%(cause)s %(seconds_to_reset)s seconds for rate reset"
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self._seconds_to_reset = kwargs['seconds_to_reset']
-
-    @property
-    def seconds_to_reset(self):
-        return self._seconds_to_reset
 
 
 class GitHub(Backend):
@@ -82,7 +69,7 @@ class GitHub(Backend):
     :param min_rate_to_sleep: minimun rate needed to sleep until
          it will be reset
     """
-    version = '0.6.0'
+    version = '0.6.3'
 
     def __init__(self, owner=None, repository=None,
                  api_token=None, username=None,
@@ -99,6 +86,7 @@ class GitHub(Backend):
             origin = urljoin(origin, owner, repository)
         elif username:
             origin = urljoin(origin, username)
+        origin = urijoin(origin, owner, repository)
 
         super().__init__(origin, tag=tag, cache=cache)
         self.base_url = base_url
@@ -452,7 +440,7 @@ class GitHubClient:
 
         logger.debug("Get GitHub items from " + url_next)
         r = self.__send_request(url_next, self.__get_payload(start, is_issues),
-                                self.__get_headers())
+
         issues = r.text
         page += 1
 
@@ -498,8 +486,16 @@ class GitHubClient:
             return self._users_orgs[login]
 
         url = GITHUB_API_URL + "/users/" + login + "/orgs"
-        r = self.__send_request(url, headers=self.__get_headers())
-        orgs = r.text
+        try:
+            r = self.__send_request(url, headers=self.__get_headers())
+            orgs = r.text
+        except requests.exceptions.HTTPError as ex:
+            # 404 not found is wrongly received sometimes
+            if ex.response.status_code == 404:
+                logger.error("Can't get github login orgs: %s", ex)
+                orgs = '[]'
+            else:
+                raise ex
 
         self._users_orgs[login] = orgs
 

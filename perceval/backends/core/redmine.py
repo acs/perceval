@@ -14,7 +14,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
-# Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA. 
+# Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA.
 #
 # Authors:
 #     Santiago Dueñas <sduenas@bitergia.com>
@@ -25,15 +25,15 @@ import logging
 
 import requests
 
+from grimoirelab.toolkit.datetime import datetime_to_utc, str_to_datetime
+from grimoirelab.toolkit.uris import urijoin
+
 from ...backend import (Backend,
                         BackendCommand,
                         BackendCommandArgumentParser,
                         metadata)
 from ...errors import CacheError
-from ...utils import (DEFAULT_DATETIME,
-                      datetime_to_utc,
-                      str_to_datetime,
-                      urljoin)
+from ...utils import DEFAULT_DATETIME
 
 
 logger = logging.getLogger(__name__)
@@ -58,7 +58,7 @@ class Redmine(Backend):
     :param tag: label used to mark the data
     :param cache: cache object to store raw data
     """
-    version = '0.5.1'
+    version = '0.5.2'
 
     def __init__(self, url, api_token=None, max_issues=MAX_ISSUES,
                  tag=None, cache=None):
@@ -95,14 +95,14 @@ class Redmine(Backend):
             issue = self.__fetch_and_parse_issue(issue_id)
 
             for key in USER_FIELDS:
-                if not key in issue:
+                if key not in issue:
                     continue
 
                 user = self.__get_or_fetch_user(issue[key]['id'])
                 issue[key + '_data'] = user
 
             for journal in issue['journals']:
-                if not 'user' in journal:
+                if 'user' not in journal:
                     continue
 
                 user = self.__get_or_fetch_user(journal['user']['id'])
@@ -195,7 +195,7 @@ class Redmine(Backend):
                 self._users[cache_user['id']] = cache_user
 
             for key in USER_FIELDS:
-                if not key in issue:
+                if key not in issue:
                     continue
 
                 user_id = issue[key]['id']
@@ -208,7 +208,7 @@ class Redmine(Backend):
                     raise CacheError(cause=cause)
 
             for journal in issue['journals']:
-                if not 'user' in journal:
+                if 'user' not in journal:
                     continue
 
                 user_id = journal['user']['id']
@@ -432,10 +432,10 @@ class RedmineClient:
         # By default, Redmine returns open issues only.
         # Parameter 'status_id' is set to get all the statuses.
         params = {
-            self.PSTATUS_ID : '*',
-            self.PSORT : self.PUPDATED_ON,
-            self.PUPDATED_ON : '>=' + ts,
-            self.PLIMIT : max_issues
+            self.PSTATUS_ID: '*',
+            self.PSORT: self.PUPDATED_ON,
+            self.PUPDATED_ON: '>=' + ts,
+            self.PLIMIT: max_issues
         }
 
         if offset is not None:
@@ -450,12 +450,12 @@ class RedmineClient:
 
         :param issue_id: issue identifier
         """
-        resource = urljoin(self.RISSUES, str(issue_id) + self.CJSON)
+        resource = urijoin(self.RISSUES, str(issue_id) + self.CJSON)
 
         params = {
-            self.PINCLUDE : ','.join([self.CATTACHMENTS, self.CCHANGESETS,
-                                      self.CCHILDREN, self.CJOURNALS,
-                                      self.CRELATIONS, self.CWATCHERS])
+            self.PINCLUDE: ','.join([self.CATTACHMENTS, self.CCHANGESETS,
+                                     self.CCHILDREN, self.CJOURNALS,
+                                     self.CRELATIONS, self.CWATCHERS])
         }
 
         response = self._call(resource, params)
@@ -467,7 +467,7 @@ class RedmineClient:
 
         :param user_id: user identifier
         """
-        resource = urljoin(self.RUSERS, str(user_id) + self.CJSON)
+        resource = urijoin(self.RUSERS, str(user_id) + self.CJSON)
 
         params = {}
 
@@ -482,7 +482,7 @@ class RedmineClient:
         :param params: dict with the HTTP parameters needed to get
             the given resource
         """
-        url = self.URL % {'base' : self.base_url, 'resource' : resource}
+        url = self.URL % {'base': self.base_url, 'resource': resource}
 
         if self.api_token:
             params[self.PKEY] = self.api_token
