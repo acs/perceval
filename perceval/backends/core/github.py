@@ -150,6 +150,27 @@ class GitHub(Backend):
         else:
             raise RuntimeError("GitHub backend does not support category %s", category)
 
+        total_items = 0
+        last_item = None
+
+        while True:
+            for item in self.__fetch_items_groups(items_groups, category):
+                yield item
+                total_items += 1
+                last_item = item
+
+            # If there are more items in the search API go for them
+            if category == 'commits' and total_items == self.client.SEARCH_API_MAX_ITEMS:
+                last_date = str_to_datetime(last_item['commit']['author']['date'])
+                last_date_utc = datetime_to_utc(last_date)
+                logger.debug("Fetching more search commits items since %s", last_date_utc)
+                total_items = 0
+                items_groups = self.client.get_commits(last_date_utc)
+            else:
+                break
+
+    def __fetch_items_groups(self, items_groups, category='issues'):
+        """ From a list of group of items, get all items """
         for raw_items in items_groups:
             self._push_cache_queue(raw_items)
             self._flush_cache_queue()
@@ -322,7 +343,8 @@ class GitHubClient:
     USERNAME_ISSUES_FIELD = 'involves'  # author
     USERNAME_COMMITS_FIELD = 'author'  # committer
     USERNAME_COMMITS_DATE = 'author-date'  # committer
-
+    SEARCH_API_MAX_ITEMS = 1000  # max number of items the search API returns
+    SEARCH_API_ITEMS_PAGE = 100  # max number of items the search API returns in a page
 
     def __init__(self, owner, repository, token, base_url=None,
                  sleep_for_rate=False, min_rate_to_sleep=MIN_RATE_LIMIT,
@@ -389,10 +411,10 @@ class GitHubClient:
         if self.username:
             if is_issues:
                 sort_field = "updated"
-                per_page = 100
+                per_page = self.SEARCH_API_ITEMS_PAGE
             else:
                 sort_field = "author-date"
-                per_page = 100
+                per_page = self.SEARCH_API_ITEMS_PAGE
         payload = {'per_page': per_page,
                    'state': 'all',
                    'sort': sort_field,
@@ -424,7 +446,12 @@ class GitHubClient:
                 raise RateLimitError(cause=cause, seconds_to_reset=seconds_to_reset)
 
         r = requests.get(url, params=params, headers=headers)
-        r.raise_for_status()
+        try:
+            r.raise_for_status()
+        except requests.exceptions.HTTPError as ex:
+            logger.debug("GitHub API error %s", ex)
+            logger.debug("X-RateLimit-Remaining %i", int(r.headers['X-RateLimit-Remaining']))
+            raise
         self.rate_limit = int(r.headers['X-RateLimit-Remaining'])
         self.rate_limit_reset_ts = int(r.headers['X-RateLimit-Reset'])
         logger.debug("Rate limit: %s", self.rate_limit)
@@ -472,6 +499,7 @@ class GitHubClient:
                 page += 1
                 issues = r.text
                 logger.debug("Page: %i/%i", page, last_page)
+
 
     def get_user(self, login):
         user = None
