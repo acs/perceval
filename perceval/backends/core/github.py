@@ -266,7 +266,7 @@ class GitHub(Backend):
             mid = str(item['id'])
         else:
             # commits
-            mid = str(item['sha'])
+            mid = str(item['url'])
 
         return mid
 
@@ -321,6 +321,8 @@ class GitHubClient:
     # or were commented on by that user.
     USERNAME_ISSUES_FIELD = 'involves'  # author
     USERNAME_COMMITS_FIELD = 'author'  # committer
+    USERNAME_COMMITS_DATE = 'author-date'  # committer
+
 
     def __init__(self, owner, repository, token, base_url=None,
                  sleep_for_rate=False, min_rate_to_sleep=MIN_RATE_LIMIT,
@@ -357,12 +359,15 @@ class GitHubClient:
         if not self.username:
             url_commits = self.__get_url() + "/commits"
         else:
-            url_commits = self.__get_url() + "/commits?q="
+            url_commits = self.__get_url() + "/commits?"
+            url_commits += "sort=" + self.USERNAME_COMMITS_DATE + "&order=asc"
+            url_commits += "&q="
             url_commits += self.USERNAME_COMMITS_FIELD + ":" + self.username
             if startdate:
                 # Convert to isoformat and remove the timezone (it is utc)
                 startdate = startdate.isoformat().split("+")[0]
-                url_commits += "+author-date:>=" + startdate
+                # hack: + -> %20 we should use some library call for urlencode
+                url_commits += "%20" + self.USERNAME_COMMITS_DATE + ":>=" + startdate
         return url_commits
 
     def __get_issues_url(self, startdate=None):
@@ -379,13 +384,16 @@ class GitHubClient:
 
     def __get_payload(self, startdate=None, is_issues=True):
         # 100 in other items. 20 for pull requests. 30 issues
+        # For the search API is 100 for commits and issues
         sort_field = "updated"
         if self.username:
             if is_issues:
                 sort_field = "updated"
+                per_page = 100
             else:
-                sort_field = "author_date"
-        payload = {'per_page': 30,
+                sort_field = "author-date"
+                per_page = 100
+        payload = {'per_page': per_page,
                    'state': 'all',
                    'sort': sort_field,
                    'direction': 'asc'}
