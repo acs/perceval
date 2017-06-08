@@ -436,22 +436,31 @@ class GitHubClient:
     def __send_request(self, url, params=None, headers=None):
         """ GET HTTP caring of rate limit """
 
-        if self.rate_limit is not None and self.rate_limit <= self.min_rate_to_sleep:
-            seconds_to_reset = self.rate_limit_reset_ts - int(time.time()) + 1
-            cause = "GitHub rate limit exhausted."
-            if self.sleep_for_rate:
-                logger.info("%s Waiting %i secs for rate limit reset.", cause, seconds_to_reset)
-                time.sleep(seconds_to_reset)
-            else:
-                raise RateLimitError(cause=cause, seconds_to_reset=seconds_to_reset)
+        while True:
+            if self.rate_limit is not None and self.rate_limit <= self.min_rate_to_sleep:
+                seconds_to_reset = self.rate_limit_reset_ts - int(time.time()) + 1
+                cause = "GitHub rate limit exhausted."
+                if self.sleep_for_rate:
+                    logger.info("%s Waiting %i secs for rate limit reset.", cause, seconds_to_reset)
+                    time.sleep(seconds_to_reset)
+                else:
+                    raise RateLimitError(cause=cause, seconds_to_reset=seconds_to_reset)
 
-        r = requests.get(url, params=params, headers=headers)
-        try:
-            r.raise_for_status()
-        except requests.exceptions.HTTPError as ex:
-            logger.debug("GitHub API error %s", ex)
-            logger.debug("X-RateLimit-Remaining %i", int(r.headers['X-RateLimit-Remaining']))
-            raise
+            r = requests.get(url, params=params, headers=headers)
+            try:
+                r.raise_for_status()
+                break
+            except requests.exceptions.HTTPError as ex:
+                if r.status_code == 403:
+                    # https://developer.github.com/v3/guides/best-practices-for-integrators/#dealing-with-abuse-rate-limits
+                    retry_seconds = int(r.headers['Retry-After'])
+                    logger.debug("Abuse rate limite. Waiting for %i", retry_seconds)
+                    time.sleep(retry_seconds)
+                else:
+                    logger.debug("GitHub API error %s", ex)
+                    logger.debug(r.headers)
+                    raise
+
         self.rate_limit = int(r.headers['X-RateLimit-Remaining'])
         self.rate_limit_reset_ts = int(r.headers['X-RateLimit-Reset'])
         logger.debug("Rate limit: %s", self.rate_limit)
