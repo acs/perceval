@@ -151,26 +151,38 @@ class GitHub(Backend):
             raise RuntimeError("GitHub backend does not support category %s", category)
 
         total_items = 0
+        total_items_round = 0
         last_item = None
 
         while True:
             for item in self.__fetch_items_groups(items_groups, category):
                 yield item
+                total_items_round += 1
                 total_items += 1
                 last_item = item
 
             # If there are more items in the search API go for them
-            if category == 'commits' and total_items == self.client.SEARCH_API_MAX_ITEMS:
-                last_date = str_to_datetime(last_item['commit']['author']['date'])
+            if self.username and total_items_round == self.client.SEARCH_API_MAX_ITEMS:
+                if 'commit' in last_item:
+                    last_date = str_to_datetime(last_item['commit']['author']['date'])
+                else:
+                    last_date = str_to_datetime(last_item['updated_at'])
                 last_date_utc = datetime_to_utc(last_date)
-                logger.debug("Fetching more search commits items since %s", last_date_utc)
-                total_items = 0
-                items_groups = self.client.get_commits(last_date_utc)
+                logger.debug("Fetching more search items since %s", last_date_utc)
+                logger.debug("Total items already fetched %i", total_items)
+                total_items_round = 0
+                if 'commit' in last_item:
+                    items_groups = self.client.get_commits(last_date_utc)
+                else:
+                    items_groups = self.client.get_issues(last_date_utc)
             else:
                 break
 
     def __fetch_items_groups(self, items_groups, category='issues'):
         """ From a list of group of items, get all items """
+
+        total_count = 0
+
         for raw_items in items_groups:
             self._push_cache_queue(raw_items)
             self._flush_cache_queue()
@@ -178,11 +190,15 @@ class GitHub(Backend):
             if self.username:
                 # Getting the items for a user not a repo
                 # The results from the search API are different
-                items = json.loads(raw_items)["items"]
+                data_json = json.loads(raw_items)
+                if total_count == 0:
+                    total_count = data_json['total_count']
+                    logger.debug("Total commits/issues count %s", total_count)
+                items = data_json["items"]
             else:
                 items = json.loads(raw_items)
             for item in items:
-                if category == 'issues':
+                if False and category == 'issues':  # not used in github activity branch
                     for field in ['user', 'assignee']:
                         if item[field]:
                             item[field+"_data"] = self.__get_user(item[field]['login'])
@@ -343,6 +359,7 @@ class GitHubClient:
     USERNAME_ISSUES_FIELD = 'involves'  # author
     USERNAME_COMMITS_FIELD = 'author'  # committer
     USERNAME_COMMITS_DATE = 'author-date'  # committer
+    USERNAME_ISSUES_DATE = 'updated'
     SEARCH_API_MAX_ITEMS = 1000  # max number of items the search API returns
     SEARCH_API_ITEMS_PAGE = 100  # max number of items the search API returns in a page
 
@@ -396,24 +413,27 @@ class GitHubClient:
         if not self.username:
             url_issues = self.__get_url() + "/issues"
         else:
-            url_issues = self.__get_url() + "/issues?q="
+            url_issues = self.__get_url() + "/issues?"
+            url_issues += "sort=" + self.USERNAME_ISSUES_DATE + "&order=asc"
+            url_issues += "&q="
             url_issues += self.USERNAME_ISSUES_FIELD + ":" + self.username
             if startdate:
                 # Convert to isoformat and remove the timezone (it is utc)
                 startdate = startdate.isoformat().split("+")[0]
-                url_issues += "+updated:>=" + startdate
+                # hack: + -> %20 we should use some library call for urlencode
+                url_issues += "%20" + self.USERNAME_ISSUES_DATE + ":>=" + startdate
         return url_issues
 
     def __get_payload(self, startdate=None, is_issues=True):
         # 100 in other items. 20 for pull requests. 30 issues
         # For the search API is 100 for commits and issues
-        sort_field = "updated"
+        sort_field = self.USERNAME_ISSUES_DATE
         if self.username:
             if is_issues:
-                sort_field = "updated"
+                sort_field = self.USERNAME_ISSUES_DATE
                 per_page = self.SEARCH_API_ITEMS_PAGE
             else:
-                sort_field = "author-date"
+                sort_field = self.USERNAME_COMMITS_DATE
                 per_page = self.SEARCH_API_ITEMS_PAGE
         payload = {'per_page': per_page,
                    'state': 'all',
