@@ -60,7 +60,7 @@ class Git(Backend):
     :raises RepositoryError: raised when there was an error cloning or
         updating the repository.
     """
-    version = '0.8.2'
+    version = '0.8.1'
 
     def __init__(self, uri, gitpath, tag=None, cache=None):
         origin = uri
@@ -158,7 +158,10 @@ class Git(Backend):
         else:
             from_date = datetime_to_utc(from_date)
 
-        repo.update()
+        try:
+            repo.pull()
+        except EmptyRepositoryError:
+            pass
 
         gitlog = repo.log(from_date, branches)
         return self.parse_git_log_from_iter(gitlog)
@@ -694,16 +697,10 @@ class GitRepository:
     ]
 
     def __init__(self, uri, dirpath):
-        gitdir = os.path.join(dirpath, 'HEAD')
+        gitdir = os.path.join(dirpath, '.git')
 
-        if not os.path.exists(dirpath):
-            cause = "directory '%s' for Git repository '%s' does not exist" % (dirpath, uri)
-            raise RepositoryError(cause=cause)
-        elif not os.path.exists(gitdir):
-            warning = "Working directories for Git repositories no longer supported." \
-                "Please remove it or clone it using --mirror option."
-            logger.warning(warning)
-            cause = "directory '%s' is not a Git mirror of repository '%s'" % (dirpath, uri)
+        if not os.path.exists(gitdir):
+            cause = "git repository '%s' does not exist" % dirpath
             raise RepositoryError(cause=cause)
 
         self.uri = uri
@@ -718,8 +715,8 @@ class GitRepository:
     def clone(cls, uri, dirpath):
         """Clone a Git repository.
 
-        Make a mirror of the repository stored in `uri` into `dirpath`.
-        The repository would be either local or remote.
+        Clone the repository stored in `uri` into `dirpath`. The repository
+        would be either local or remote.
 
         :param uri: URI of the repository
         :param dirtpath: directory where the repository will be cloned
@@ -729,7 +726,7 @@ class GitRepository:
         :raises RepositoryError: when an error occurs cloning the given
             repository
         """
-        cmd = ['git', 'clone', '--mirror', uri, dirpath]
+        cmd = ['git', 'clone', uri, dirpath]
         env = {
             'LANG': 'C',
             'HOME': os.getenv('HOME', '')
@@ -806,21 +803,34 @@ class GitRepository:
         """
         return self.count_objects() == 0
 
-    def update(self):
-        """Update repository from its remote.
+    def pull(self):
+        """Update repository from 'origin' remote.
 
         Calling this method, the repository will be synchronized with
-        the remote repository using the 'remote update' command.
-        Any commit stored in the local copy will be removed; refs
-        will be overwritten.
+        'origin' repository using the 'fetch' command. Any commit stored
+        in the local copy will be removed.
 
+        :raises EmptyRepositoryError: when the repository is empty and
+            the action cannot be performed
         :raises RepositoryError: when an error occurs updating the
             repository
         """
-        cmd_update = ['git', 'remote', 'update']
-        self._exec(cmd_update, cwd=self.dirpath, env=self.gitenv)
+        if self.is_empty():
+            logger.warning("Git %s repository is empty; unable to pull",
+                           self.uri)
+            raise EmptyRepositoryError(repository=self.uri)
 
-        logger.debug("Git %s repository updated into %s",
+        cmd_fetch = ['git', 'fetch', 'origin']
+        self._exec(cmd_fetch, cwd=self.dirpath, env=self.gitenv)
+
+        if not self.is_detached():
+            cmd_reset = ['git', 'reset', '--hard', 'FETCH_HEAD']
+            self._exec(cmd_reset, cwd=self.dirpath, env=self.gitenv)
+        else:
+            logger.debug("Git %s repository is in detached state; skipping reset",
+                         self.uri)
+
+        logger.debug("Git %s repository pulled into %s",
                      self.uri, self.dirpath)
 
     def sync(self):
@@ -901,7 +911,7 @@ class GitRepository:
         elif len(branches) == 0:
             cmd_log.append('--max-count=0')
         else:
-            branches = ['refs/heads/' + branch for branch in branches]
+            branches = ['remotes/origin/' + branch for branch in branches]
             cmd_log.extend(branches)
 
         for line in self._exec_nb(cmd_log, cwd=self.dirpath, env=self.gitenv):
@@ -1010,7 +1020,7 @@ class GitRepository:
     def _read_commits_from_pack(self, packet_name):
         """Read the commits of a pack."""
 
-        filepath = 'objects/pack/pack-' + packet_name
+        filepath = '.git/objects/pack/pack-' + packet_name
 
         cmd_verify_pack = ['git', 'verify-pack', '-v', filepath]
 
