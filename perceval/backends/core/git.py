@@ -21,17 +21,11 @@
 #
 
 import collections
-import io
 import logging
 import os
 import re
 import subprocess
 import threading
-
-import urllib.parse
-
-import dulwich.client
-import dulwich.repo
 
 from grimoirelab.toolkit.datetime import datetime_to_utc, str_to_datetime
 
@@ -66,7 +60,7 @@ class Git(Backend):
     :raises RepositoryError: raised when there was an error cloning or
         updating the repository.
     """
-    version = '0.8.3'
+    version = '0.8.2'
 
     def __init__(self, uri, gitpath, tag=None, cache=None):
         origin = uri
@@ -959,45 +953,59 @@ class GitRepository:
     def _fetch_pack(self):
         """Fetch changes and store them in a pack."""
 
-        def determine_wants(refs):
-            remote_refs = self._discover_refs(remote=True)
-            remote_refs = [ref.hash.encode('utf-8') for ref in remote_refs
-                           if not ref.refname.endswith('^{}')]
-            return remote_refs
+        remote_refs = self._discover_refs(remote=True)
+        remote_refs = [ref.refname for ref in remote_refs
+                       if not ref.refname.endswith('^{}')]
 
-        uri_parts = urllib.parse.urlparse(self.uri)
-        protocol = uri_parts.scheme
+        repo = self.uri
+        for protocol in ['https://', 'http://']:
+            if repo.startswith(protocol):
+                repo = "git://" + repo[len(protocol):]
+                break
 
-        if protocol in ['git', 'http', 'https']:
-            repo_path = os.path.basename(self.uri)
-            server_url = os.path.dirname(self.uri)
+        cmd_fetch_pack = ['git', 'fetch-pack', '--include-tag',
+                          '--keep', repo]
+        cmd_fetch_pack.extend(remote_refs)
 
-            if protocol == 'git':
-                client = dulwich.client.TCPGitClient(server_url)
-            else:
-                client = dulwich.client.HttpGitClient(server_url)
-        else:
-            repo_path = self.uri
-            client = dulwich.client.LocalGitClient()
+        outs = self._exec(cmd_fetch_pack, cwd=self.dirpath,
+                          env=self.gitenv)
+        outs = outs.decode('utf-8', errors='surrogateescape').rstrip()
+        pack, refs = self._read_fetch_pack(outs)
 
-        repo = dulwich.repo.Repo(self.dirpath)
-        fd = io.BytesIO()
+        return (pack, refs)
 
-        result = client.fetch_pack(repo_path,
-                                   determine_wants,
-                                   repo.get_graph_walker(),
-                                   fd.write)
-        refs = [GitRef(ref_hash.decode('utf-8'), ref_name.decode('utf-8'))
-                for ref_name, ref_hash in result.refs.items()]
+    def _read_fetch_pack(self, stream):
+        """Parse fetch-pack command output."""
 
-        if len(fd.getvalue()) > 0:
-            fd.seek(0)
-            pack = repo.object_store.add_thin_pack(fd.read, None)
-            pack_name = pack.name().decode('utf-8')
-        else:
-            pack_name = None
+        PACK_REGEX = re.compile(r"^(pack|keep)\s+(?P<packet>[a-f0-9]{40})$",
+                                re.VERBOSE)
+        REFS_REGEX = re.compile(r"^(?P<hash>[a-f0-9]{40})\s+(?P<ref>.+)$",
+                                re.VERBOSE)
 
-        return (pack_name, refs)
+        pack = None
+        refs = []
+
+        for line in stream.split('\n'):
+            m = PACK_REGEX.match(line)
+            if m:
+                pack = m.group('packet')
+                logger.debug("Packet %s found reading 'fetch-pack' output",
+                             pack)
+                continue
+
+            m = REFS_REGEX.match(line)
+            if m:
+                ref = GitRef(m.group('hash'), m.group('ref'))
+                refs.append(ref)
+                logger.debug("Ref %s - %s found reading 'fetch-pack' output",
+                             ref.hash, ref.refname)
+                continue
+
+        if not refs:
+            error = "unable to read 'fetch-pack' output; reason: no refs found"
+            raise RepositoryError(cause=error)
+
+        return (pack, refs)
 
     def _read_commits_from_pack(self, packet_name):
         """Read the commits of a pack."""
@@ -1010,10 +1018,7 @@ class GitRepository:
         outs = outs.decode('utf-8', errors='surrogateescape').rstrip()
 
         lines = [line.split(' ') for line in outs.split('\n')]
-
-        # Commits usually come in the pack ordered from newest to oldest
         commits = [parts[0] for parts in lines if parts[1] == 'commit']
-        commits.reverse()
 
         return commits
 
